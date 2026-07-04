@@ -123,3 +123,29 @@ test_smoke_commands_emit_primitives :: proc(t: ^testing.T) {
 	testing.expect(t, text_ok)
 }
 // END org:block raylib-smoke-test
+
+// BEGIN org:block raylib-workbench-smoke
+workbench_smoke_commands :: proc(command_storage: []ui.Draw_Command, warning_storage: []ui.Debug_Warning) -> []ui.Draw_Command {
+	state: ui.UI_State
+	debug := ui.Debug_Buffer{warnings = warning_storage}
+	draw := ui.draw_buffer(command_storage)
+	frame := ui.ui_context(&state, &draw, &debug)
+	ui.ui_begin_frame(&state, ui.Mouse_Input{})
+
+	ui.example_dense_control_panel(&frame, true, false, 4, 8)
+	return ui.ui_end(&draw)
+}
+// END org:block raylib-workbench-smoke
+
+// BEGIN org:block raylib-workbench-smoke-test
+@(test)
+test_workbench_smoke_commands_emit_dense_panel :: proc(t: ^testing.T) {
+	command_storage: [24]ui.Draw_Command
+	warning_storage: [4]ui.Debug_Warning
+	commands := workbench_smoke_commands(command_storage[:], warning_storage[:])
+
+	testing.expect_value(t, len(commands), 16)
+	testing.expect_value(t, commands[0].kind, ui.Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, commands[15].kind, ui.Draw_Command_Kind.Text)
+}
+// END org:block raylib-workbench-smoke-test
