@@ -74,8 +74,7 @@ Deliverables:
 - no semantic =Box=, =Button=, =Toggle=, or =Panel= draw commands
 - caller-owned or UI-owned fixed command buffer
 - =ui_end= returns ordered command slice
-- minimal =UI_Style=
-- text overflow warning before command emission
+- integer text scale =1|2|3|4=
 - loud command-buffer overflow behavior
 
 Review question: does the draw layer expose only primitive rendering facts, with UI semantics resolved before commands reach a backend?
