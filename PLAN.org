@@ -1,0 +1,97 @@
+* Work Plan
+
+** Source Directive
+
+This project uses a single literate Org source file as the canonical implementation surface once code begins.
+
+- Edit the =.org= source, not tangled Odin output.
+- Tangle generated Odin files into the repo and commit them.
+- Mark generated files with "edit the org source".
+- Wrap each tangled block with =BEGIN org:block <name>= and =END org:block <name>= comments.
+- Keep block granularity at top-level Odin declarations or procedures.
+- Use block markers to map compiler diagnostics in tangled files back to the org source.
+- Do not build reverse-formatting or formatter-sync tooling unless Odin formatter support appears and the need becomes concrete.
+
+** PR 1: Spec And Skeleton
+
+Goal: establish the repo, package boundary, and non-raylib data model.
+
+Deliverables:
+
+- =SPEC.org=
+- package directory
+- core public types: =Cell_Rect=, =Pixel_Rect=, =Color=, =UI_ID=
+- no backend dependencies
+- small README
+
+Review question: does the package boundary express the intended 8x16 constraints without leaking =auto= concepts?
+
+** PR 2: Geometry And Hit Testing
+
+Goal: prove the core geometry.
+
+Deliverables:
+
+- =cell_rect=
+- =rect_rel=
+- =rect_px=
+- =contains=
+- validation/debug behavior for invalid rects
+- unit tests or small example checks
+
+Review question: are rects clearly absolute value geometry, not a layout tree?
+
+** PR 3: Input State And Activation
+
+Goal: implement release-inside control activation.
+
+Deliverables:
+
+- =UI_State=
+- mouse button state ingestion
+- press-origin tracking
+- =hit_any= / =activated_any=
+- button activation tests/examples
+
+Review question: does interaction state stay minimal and caller-owned?
+
+** PR 4: Drawing Command Layer
+
+Goal: keep package independent of raylib while still useful to raylib callers.
+
+Deliverables:
+
+- draw command structs for box, text, bar
+- caller-owned command buffer or callback shape
+- minimal =UI_Style=
+- debug overflow warnings
+
+Review question: is the drawing abstraction thin enough to translate directly to raylib?
+
+** PR 5: Controls And Examples
+
+Goal: build the first useful controls and example UIs.
+
+Deliverables:
+
+- =ui_text=
+- =ui_box=
+- =ui_panel=
+- =ui_bar=
+- =ui_button=
+- =ui_toggle=
+- at least two small example surfaces
+
+Review question: do the examples reveal a pleasant API without adding speculative layout helpers?
+
+** Later: Auto Integration
+
+This should be a separate PR train in =auto=.
+
+Possible order:
+
+1. Vendor/import =8x16=.
+2. Replace duplicated button geometry first.
+3. Rename =UI_Rect= to =Cell_Rect= at boundary.
+4. Move panel controls incrementally.
+5. Keep automata/domain colors caller-owned.
