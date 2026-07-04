@@ -152,3 +152,68 @@ test_ui_begin_frame_clears_press_origin_after_release_frame :: proc(t: ^testing.
 	testing.expect_value(t, state.pressed_id[mouse_button_index(.Left)], UI_ID_NONE)
 }
 // END org:block test-activation-clear-next-frame
+
+// BEGIN org:block test-draw-box
+@(test)
+test_draw_box_pushes_pixel_command :: proc(t: ^testing.T) {
+	storage: [1]Draw_Command
+	buffer := Draw_Buffer{commands = storage[:]}
+	fill := Color{r = 1, g = 2, b = 3, a = 4}
+	line := Color{r = 5, g = 6, b = 7, a = 8}
+
+	testing.expect(t, draw_box(&buffer, cell_rect(1, 2, 3, 4), fill, line))
+	testing.expect_value(t, buffer.count, 1)
+	testing.expect_value(t, buffer.commands[0].kind, Draw_Command_Kind.Box)
+	testing.expect_value(t, buffer.commands[0].box.rect, Pixel_Rect{x = 8, y = 32, w = 24, h = 64})
+	testing.expect_value(t, buffer.commands[0].box.fill, fill)
+	testing.expect_value(t, buffer.commands[0].box.line, line)
+}
+// END org:block test-draw-box
+
+// BEGIN org:block test-draw-text
+@(test)
+test_draw_text_pushes_text_command :: proc(t: ^testing.T) {
+	storage: [1]Draw_Command
+	buffer := Draw_Buffer{commands = storage[:]}
+	color := Color{r = 10, g = 11, b = 12, a = 13}
+
+	testing.expect(t, draw_text(&buffer, cell_rect(0, 1, 4, 1), "ok", color))
+	testing.expect_value(t, buffer.commands[0].kind, Draw_Command_Kind.Text)
+	testing.expect_value(t, buffer.commands[0].text.rect, Pixel_Rect{x = 0, y = 16, w = 32, h = 16})
+	testing.expect_value(t, buffer.commands[0].text.text, "ok")
+	testing.expect_value(t, buffer.commands[0].text.color, color)
+}
+// END org:block test-draw-text
+
+// BEGIN org:block test-draw-bar
+@(test)
+test_draw_bar_clamps_fill_width :: proc(t: ^testing.T) {
+	storage: [2]Draw_Command
+	buffer := Draw_Buffer{commands = storage[:]}
+	color := Color{r = 1, g = 1, b = 1, a = 255}
+
+	testing.expect(t, draw_bar(&buffer, cell_rect(0, 0, 2, 1), 99, color, color, color))
+	testing.expect_value(t, buffer.commands[0].bar.fill, Pixel_Rect{x = 0, y = 0, w = 16, h = 16})
+
+	testing.expect(t, draw_bar(&buffer, cell_rect(0, 0, 2, 1), -1, color, color, color))
+	testing.expect_value(t, buffer.commands[1].bar.fill, Pixel_Rect{x = 0, y = 0, w = 0, h = 16})
+}
+// END org:block test-draw-bar
+
+// BEGIN org:block test-draw-overflow
+@(test)
+test_draw_buffer_overflow_records_debug_warning :: proc(t: ^testing.T) {
+	command_storage: [1]Draw_Command
+	warning_storage: [1]Debug_Warning
+	debug := Debug_Buffer{warnings = warning_storage[:]}
+	buffer := Draw_Buffer{commands = command_storage[:], debug = &debug}
+	color := Color{a = 255}
+
+	testing.expect(t, draw_box(&buffer, cell_rect(0, 0, 1, 1), color, color))
+	testing.expect(t, !draw_box(&buffer, cell_rect(1, 0, 1, 1), color, color))
+	testing.expect_value(t, buffer.count, 1)
+	testing.expect_value(t, buffer.overflow_count, 1)
+	testing.expect_value(t, debug.count, 1)
+	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Draw_Command_Overflow)
+}
+// END org:block test-draw-overflow
