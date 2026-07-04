@@ -15,6 +15,16 @@ with no drawing backend dependency.
 package ui8x16
 #+end_src
 
+** Cell Metrics
+
+Cell metrics are compile-time constants. They are part of the package contract,
+not backend configuration.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name cell-metrics
+CELL_WIDTH  :: 8
+CELL_HEIGHT :: 16
+#+end_src
+
 ** Cell Rectangles
 
 =Cell_Rect= stores absolute UI-space geometry in fixed 8x16 cells.
@@ -56,4 +66,121 @@ strings, or backend handles on the package.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-id
 UI_ID :: distinct u64
+#+end_src
+
+** Geometry Constructors
+
+Constructors assert positive dimensions. Callers should not pass invalid
+rectangles; checked builds make that failure immediate.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name cell-rect-proc
+cell_rect :: proc(col, row, w, h: int) -> Cell_Rect {
+	assert(w > 0, "Cell_Rect width must be positive")
+	assert(h > 0, "Cell_Rect height must be positive")
+	return Cell_Rect{col = col, row = row, w = w, h = h}
+}
+#+end_src
+
+=rect_rel= composes coordinates without retaining parent/child relationships.
+The returned rectangle is absolute.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name rect-rel
+rect_rel :: proc(parent: Cell_Rect, col, row, w, h: int) -> Cell_Rect {
+	return cell_rect(parent.col + col, parent.row + row, w, h)
+}
+#+end_src
+
+** Pixel Conversion
+
+=rect_px= translates cell-space geometry to pixels using the fixed 8x16 metric.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name rect-px
+rect_px :: proc(rect: Cell_Rect) -> Pixel_Rect {
+	return Pixel_Rect{
+		x = rect.col * CELL_WIDTH,
+		y = rect.row * CELL_HEIGHT,
+		w = rect.w * CELL_WIDTH,
+		h = rect.h * CELL_HEIGHT,
+	}
+}
+#+end_src
+
+** Hit Testing
+
+Hit testing is half-open in pixel space: left/top edges are inside, right/bottom
+edges are outside.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name contains
+contains :: proc(rect: Cell_Rect, x, y: int) -> bool {
+	px := rect_px(rect)
+	return x >= px.x &&
+	       y >= px.y &&
+	       x < px.x + px.w &&
+	       y < px.y + px.h
+}
+#+end_src
+
+* Tests
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-package
+package ui8x16
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-imports
+import "core:testing"
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-cell-rect
+@(test)
+test_cell_rect_keeps_absolute_values :: proc(t: ^testing.T) {
+	rect := cell_rect(2, 3, 4, 5)
+	testing.expect_value(t, rect, Cell_Rect{col = 2, row = 3, w = 4, h = 5})
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-rect-rel
+@(test)
+test_rect_rel_returns_absolute_rect :: proc(t: ^testing.T) {
+	parent := cell_rect(10, 20, 30, 40)
+	child := rect_rel(parent, 2, 3, 4, 5)
+	testing.expect_value(t, child, Cell_Rect{col = 12, row = 23, w = 4, h = 5})
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-rect-px
+@(test)
+test_rect_px_uses_fixed_cell_metrics :: proc(t: ^testing.T) {
+	px := rect_px(cell_rect(2, 3, 4, 5))
+	testing.expect_value(t, px, Pixel_Rect{x = 16, y = 48, w = 32, h = 80})
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-contains
+@(test)
+test_contains_uses_half_open_pixel_bounds :: proc(t: ^testing.T) {
+	rect := cell_rect(1, 2, 3, 4)
+
+	testing.expect(t, contains(rect, 8, 32))
+	testing.expect(t, contains(rect, 31, 95))
+	testing.expect(t, !contains(rect, 7, 32))
+	testing.expect(t, !contains(rect, 8, 31))
+	testing.expect(t, !contains(rect, 32, 32))
+	testing.expect(t, !contains(rect, 8, 96))
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-invalid-width
+@(test)
+test_cell_rect_rejects_non_positive_width :: proc(t: ^testing.T) {
+	testing.expect_assert(t, "Cell_Rect width must be positive")
+	_ = cell_rect(0, 0, 0, 1)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-invalid-height
+@(test)
+test_cell_rect_rejects_non_positive_height :: proc(t: ^testing.T) {
+	testing.expect_assert(t, "Cell_Rect height must be positive")
+	_ = cell_rect(0, 0, 1, 0)
+}
 #+end_src
