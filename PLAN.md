@@ -1,5 +1,19 @@
 # Work Plan
 
+## Source Directive
+
+This project may use a single literate Org source file as the canonical implementation surface once code begins.
+
+If that path is taken:
+
+- edit the `.org` source, not tangled Odin output
+- tangle generated Odin files into the repo and commit them
+- mark generated files with "edit the org source"
+- wrap each tangled block with `BEGIN org:block <name>` and `END org:block <name>` comments
+- keep block granularity at top-level Odin declarations or procedures
+- use block markers to map compiler diagnostics in tangled files back to the org source
+- do not build reverse-formatting or formatter-sync tooling unless Odin formatter support appears and the need becomes concrete
+
 ## PR 1: Spec And Skeleton
 
 Goal: establish the repo, package boundary, and non-raylib data model.
