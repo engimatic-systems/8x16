@@ -1139,3 +1139,139 @@ test_ui_toggle_active_state_resolves_style_to_primitive_fill :: proc(t: ^testing
 	expect_text_kind(t, draw.commands[2])
 }
 #+end_src
+
+* Raylib Backend
+
+The raylib backend is a separate package. It renders ordered primitive commands
+and owns only backend concerns: font handles, texture filtering, and concrete
+raylib draw calls.
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-package
+package raylib_8x16
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-imports
+import "core:c"
+import "core:testing"
+import rl "vendor:raylib"
+import ui "../ui8x16"
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-renderer
+Renderer :: struct {
+	font:       rl.Font,
+	text_runes: []rune,
+	spacing:    f32,
+	owns_font:  bool,
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-color
+raylib_color :: proc(color: ui.Color) -> rl.Color {
+	return rl.Color{color.r, color.g, color.b, color.a}
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-rect
+raylib_rect :: proc(rect: ui.Pixel_Rect) -> rl.Rectangle {
+	return rl.Rectangle{
+		x = f32(rect.x),
+		y = f32(rect.y),
+		width = f32(rect.w),
+		height = f32(rect.h),
+	}
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-point
+raylib_point :: proc(point: ui.Pixel_Point) -> rl.Vector2 {
+	return rl.Vector2{f32(point.x), f32(point.y)}
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-renderer-procs
+renderer_from_font :: proc(font: rl.Font, text_runes: []rune, spacing: f32 = 0) -> Renderer {
+	rl.SetTextureFilter(font.texture, .POINT)
+	return Renderer{font = font, text_runes = text_runes, spacing = spacing}
+}
+
+load_renderer :: proc(font_path: cstring, text_runes: []rune, spacing: f32 = 0) -> Renderer {
+	font := rl.LoadFont(font_path)
+	rl.SetTextureFilter(font.texture, .POINT)
+	return Renderer{font = font, text_runes = text_runes, spacing = spacing, owns_font = true}
+}
+
+unload_renderer :: proc(renderer: ^Renderer) {
+	if renderer.owns_font {
+		rl.UnloadFont(renderer.font)
+		renderer.owns_font = false
+	}
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-text-runes
+text_runes :: proc(renderer: ^Renderer, text: string) -> []rune {
+	assert(len(text) <= len(renderer.text_runes), "Renderer text rune scratch too small")
+	for i in 0..<len(text) {
+		renderer.text_runes[i] = rune(text[i])
+	}
+	return renderer.text_runes[:len(text)]
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-render-command
+render_command :: proc(renderer: ^Renderer, command: ui.Draw_Command) {
+	switch command.kind {
+	case .Fill_Rect:
+		rl.DrawRectangleRec(raylib_rect(command.fill_rect.rect), raylib_color(command.fill_rect.color))
+	case .Stroke_Rect:
+		rl.DrawRectangleLinesEx(raylib_rect(command.stroke_rect.rect), 1, raylib_color(command.stroke_rect.color))
+	case .Text:
+		runes := text_runes(renderer, command.text.text)
+		rl.DrawTextCodepoints(
+			renderer.font,
+			raw_data(runes),
+			c.int(len(runes)),
+			raylib_point(command.text.pos),
+			f32(ui.CELL_HEIGHT * command.text.scale),
+			renderer.spacing,
+			raylib_color(command.text.color),
+		)
+	}
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-render-commands
+render_commands :: proc(renderer: ^Renderer, commands: []ui.Draw_Command) {
+	for command in commands {
+		render_command(renderer, command)
+	}
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-smoke
+smoke_commands :: proc(storage: []ui.Draw_Command) -> []ui.Draw_Command {
+	buffer := ui.draw_buffer(storage)
+	ui.draw_fill_rect(&buffer, ui.Pixel_Rect{x = 0, y = 0, w = 80, h = 32}, ui.Color{r = 24, g = 24, b = 24, a = 255})
+	ui.draw_stroke_rect(&buffer, ui.Pixel_Rect{x = 0, y = 0, w = 80, h = 32}, ui.Color{r = 180, g = 180, b = 180, a = 255})
+	ui.draw_text(&buffer, ui.Pixel_Point{x = 8, y = 8}, "8x16", ui.Color{r = 235, g = 235, b = 235, a = 255}, 1)
+	return ui.ui_end(&buffer)
+}
+
+smoke_render :: proc(renderer: ^Renderer, storage: []ui.Draw_Command) {
+	render_commands(renderer, smoke_commands(storage))
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-smoke-test
+@(test)
+test_smoke_commands_emit_primitives :: proc(t: ^testing.T) {
+	storage: [3]ui.Draw_Command
+	commands := smoke_commands(storage[:])
+
+	testing.expect_value(t, len(commands), 3)
+	testing.expect_value(t, commands[0].kind, ui.Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, commands[1].kind, ui.Draw_Command_Kind.Stroke_Rect)
+	testing.expect_value(t, commands[2].kind, ui.Draw_Command_Kind.Text)
+}
+#+end_src

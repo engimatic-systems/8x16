@@ -1,0 +1,131 @@
+// Generated from ../8x16.org. Edit the org source.
+
+// BEGIN org:block raylib-package
+package raylib_8x16
+// END org:block raylib-package
+
+// BEGIN org:block raylib-imports
+import "core:c"
+import "core:testing"
+import rl "vendor:raylib"
+import ui "../ui8x16"
+// END org:block raylib-imports
+
+// BEGIN org:block raylib-renderer
+Renderer :: struct {
+	font:       rl.Font,
+	text_runes: []rune,
+	spacing:    f32,
+	owns_font:  bool,
+}
+// END org:block raylib-renderer
+
+// BEGIN org:block raylib-color
+raylib_color :: proc(color: ui.Color) -> rl.Color {
+	return rl.Color{color.r, color.g, color.b, color.a}
+}
+// END org:block raylib-color
+
+// BEGIN org:block raylib-rect
+raylib_rect :: proc(rect: ui.Pixel_Rect) -> rl.Rectangle {
+	return rl.Rectangle{
+		x = f32(rect.x),
+		y = f32(rect.y),
+		width = f32(rect.w),
+		height = f32(rect.h),
+	}
+}
+// END org:block raylib-rect
+
+// BEGIN org:block raylib-point
+raylib_point :: proc(point: ui.Pixel_Point) -> rl.Vector2 {
+	return rl.Vector2{f32(point.x), f32(point.y)}
+}
+// END org:block raylib-point
+
+// BEGIN org:block raylib-renderer-procs
+renderer_from_font :: proc(font: rl.Font, text_runes: []rune, spacing: f32 = 0) -> Renderer {
+	rl.SetTextureFilter(font.texture, .POINT)
+	return Renderer{font = font, text_runes = text_runes, spacing = spacing}
+}
+
+load_renderer :: proc(font_path: cstring, text_runes: []rune, spacing: f32 = 0) -> Renderer {
+	font := rl.LoadFont(font_path)
+	rl.SetTextureFilter(font.texture, .POINT)
+	return Renderer{font = font, text_runes = text_runes, spacing = spacing, owns_font = true}
+}
+
+unload_renderer :: proc(renderer: ^Renderer) {
+	if renderer.owns_font {
+		rl.UnloadFont(renderer.font)
+		renderer.owns_font = false
+	}
+}
+// END org:block raylib-renderer-procs
+
+// BEGIN org:block raylib-text-runes
+text_runes :: proc(renderer: ^Renderer, text: string) -> []rune {
+	assert(len(text) <= len(renderer.text_runes), "Renderer text rune scratch too small")
+	for i in 0..<len(text) {
+		renderer.text_runes[i] = rune(text[i])
+	}
+	return renderer.text_runes[:len(text)]
+}
+// END org:block raylib-text-runes
+
+// BEGIN org:block raylib-render-command
+render_command :: proc(renderer: ^Renderer, command: ui.Draw_Command) {
+	switch command.kind {
+	case .Fill_Rect:
+		rl.DrawRectangleRec(raylib_rect(command.fill_rect.rect), raylib_color(command.fill_rect.color))
+	case .Stroke_Rect:
+		rl.DrawRectangleLinesEx(raylib_rect(command.stroke_rect.rect), 1, raylib_color(command.stroke_rect.color))
+	case .Text:
+		runes := text_runes(renderer, command.text.text)
+		rl.DrawTextCodepoints(
+			renderer.font,
+			raw_data(runes),
+			c.int(len(runes)),
+			raylib_point(command.text.pos),
+			f32(ui.CELL_HEIGHT * command.text.scale),
+			renderer.spacing,
+			raylib_color(command.text.color),
+		)
+	}
+}
+// END org:block raylib-render-command
+
+// BEGIN org:block raylib-render-commands
+render_commands :: proc(renderer: ^Renderer, commands: []ui.Draw_Command) {
+	for command in commands {
+		render_command(renderer, command)
+	}
+}
+// END org:block raylib-render-commands
+
+// BEGIN org:block raylib-smoke
+smoke_commands :: proc(storage: []ui.Draw_Command) -> []ui.Draw_Command {
+	buffer := ui.draw_buffer(storage)
+	ui.draw_fill_rect(&buffer, ui.Pixel_Rect{x = 0, y = 0, w = 80, h = 32}, ui.Color{r = 24, g = 24, b = 24, a = 255})
+	ui.draw_stroke_rect(&buffer, ui.Pixel_Rect{x = 0, y = 0, w = 80, h = 32}, ui.Color{r = 180, g = 180, b = 180, a = 255})
+	ui.draw_text(&buffer, ui.Pixel_Point{x = 8, y = 8}, "8x16", ui.Color{r = 235, g = 235, b = 235, a = 255}, 1)
+	return ui.ui_end(&buffer)
+}
+
+smoke_render :: proc(renderer: ^Renderer, storage: []ui.Draw_Command) {
+	render_commands(renderer, smoke_commands(storage))
+}
+// END org:block raylib-smoke
+
+// BEGIN org:block raylib-smoke-test
+@(test)
+test_smoke_commands_emit_primitives :: proc(t: ^testing.T) {
+	storage: [3]ui.Draw_Command
+	commands := smoke_commands(storage[:])
+
+	testing.expect_value(t, len(commands), 3)
+	testing.expect_value(t, commands[0].kind, ui.Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, commands[1].kind, ui.Draw_Command_Kind.Stroke_Rect)
+	testing.expect_value(t, commands[2].kind, ui.Draw_Command_Kind.Text)
+}
+// END org:block raylib-smoke-test
