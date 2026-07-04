@@ -52,6 +52,30 @@ expect_text_kind :: proc(t: ^testing.T, command: Draw_Command) {
 	_, ok := command.(Text_Command)
 	testing.expect(t, ok)
 }
+
+expect_text_value :: proc(t: ^testing.T, command: Draw_Command, text: string) {
+	payload, ok := command.(Text_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.text, text)
+	}
+}
+
+expect_text_pos :: proc(t: ^testing.T, command: Draw_Command, pos: Pixel_Point) {
+	payload, ok := command.(Text_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.pos, pos)
+	}
+}
+
+expect_fill_rect_width :: proc(t: ^testing.T, command: Draw_Command, width: int) {
+	payload, ok := command.(Fill_Rect_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.rect.w, width)
+	}
+}
 // END org:block test-command-helpers
 
 // BEGIN org:block test-cell-rect
@@ -311,9 +335,8 @@ test_ui_text_emits_primitive_text_and_overflow_warning :: proc(t: ^testing.T) {
 	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
 
 	testing.expect_value(t, draw.count, 2)
-	testing.expect_value(t, draw.commands[0].kind, Draw_Command_Kind.Text)
-	testing.expect_value(t, draw.commands[0].text.pos, Pixel_Point{x = 0, y = 0})
-	testing.expect_value(t, draw.commands[0].text.text, "abc")
+	expect_text_pos(t, draw.commands[0], Pixel_Point{x = 0, y = 0})
+	expect_text_value(t, draw.commands[0], "abc")
 	testing.expect_value(t, debug.count, 1)
 	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Text_Overflow)
 	testing.expect_value(t, debug.warnings[0].measured_width, 24)
@@ -337,11 +360,8 @@ test_ui_box_compiles_to_fill_then_stroke :: proc(t: ^testing.T) {
 	ui_box(&ui, UI_ID(2), cell_rect(1, 1, 2, 1), fill, line)
 
 	testing.expect_value(t, draw.count, 2)
-	testing.expect_value(t, draw.commands[0].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, draw.commands[1].kind, Draw_Command_Kind.Stroke_Rect)
-	testing.expect_value(t, draw.commands[0].fill_rect.rect, Pixel_Rect{x = 8, y = 16, w = 16, h = 16})
-	testing.expect_value(t, draw.commands[0].fill_rect.color, fill)
-	testing.expect_value(t, draw.commands[1].stroke_rect.color, line)
+	expect_fill_rect(t, draw.commands[0], Pixel_Rect{x = 8, y = 16, w = 16, h = 16}, fill)
+	expect_stroke_rect(t, draw.commands[1], Pixel_Rect{x = 8, y = 16, w = 16, h = 16}, line)
 }
 // END org:block test-ui-box
 
@@ -359,10 +379,9 @@ test_ui_bar_compiles_to_empty_fill_value_fill_and_stroke :: proc(t: ^testing.T) 
 	ui_bar(&ui, UI_ID(3), cell_rect(0, 0, 10, 1), 3, 10, ui.style.bar_fill)
 
 	testing.expect_value(t, draw.count, 3)
-	testing.expect_value(t, draw.commands[0].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, draw.commands[1].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, draw.commands[2].kind, Draw_Command_Kind.Stroke_Rect)
-	testing.expect_value(t, draw.commands[1].fill_rect.rect, Pixel_Rect{x = 0, y = 0, w = 24, h = 16})
+	expect_fill_rect_kind(t, draw.commands[0])
+	expect_fill_rect(t, draw.commands[1], Pixel_Rect{x = 0, y = 0, w = 24, h = 16}, ui.style.bar_fill)
+	expect_stroke_rect_kind(t, draw.commands[2])
 }
 // END org:block test-ui-bar
 
@@ -386,10 +405,10 @@ test_ui_button_returns_activation_and_compiles_primitives :: proc(t: ^testing.T)
 
 	commands := ui_end(&draw)
 	testing.expect_value(t, len(commands), 6)
-	testing.expect_value(t, commands[0].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, commands[1].kind, Draw_Command_Kind.Stroke_Rect)
-	testing.expect_value(t, commands[2].kind, Draw_Command_Kind.Text)
-	testing.expect_value(t, commands[5].text.pos, Pixel_Point{x = 2, y = 0})
+	expect_fill_rect_kind(t, commands[0])
+	expect_stroke_rect_kind(t, commands[1])
+	expect_text_kind(t, commands[2])
+	expect_text_pos(t, commands[5], Pixel_Point{x = 2, y = 0})
 }
 // END org:block test-ui-button
 
@@ -407,8 +426,7 @@ test_ui_toggle_active_state_resolves_style_to_primitive_fill :: proc(t: ^testing
 	ui_toggle(&ui, UI_ID(5), cell_rect(0, 0, 6, 1), "snap", true)
 
 	testing.expect_value(t, draw.count, 3)
-	testing.expect_value(t, draw.commands[0].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, draw.commands[0].fill_rect.color, ui.style.button_active_fill)
-	testing.expect_value(t, draw.commands[2].kind, Draw_Command_Kind.Text)
+	expect_fill_rect(t, draw.commands[0], Pixel_Rect{x = 0, y = 0, w = 48, h = 16}, ui.style.button_active_fill)
+	expect_text_kind(t, draw.commands[2])
 }
 // END org:block test-ui-toggle
