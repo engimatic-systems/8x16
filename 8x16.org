@@ -68,6 +68,109 @@ strings, or backend handles on the package.
 UI_ID :: distinct u64
 #+end_src
 
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-id-none
+UI_ID_NONE :: UI_ID(0)
+#+end_src
+
+** Input State
+
+Mouse input is ingested once per frame. The caller owns =UI_State= storage and
+passes sampled mouse state into =ui_begin_frame=.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name mouse-button
+Mouse_Button :: enum {
+	Left,
+	Middle,
+	Right,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name mouse-button-count
+MOUSE_BUTTON_COUNT :: 3
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name mouse-input
+Mouse_Input :: struct {
+	x, y: int,
+	down: [MOUSE_BUTTON_COUNT]bool,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-state
+UI_State :: struct {
+	mouse:         Mouse_Input,
+	previous_down: [MOUSE_BUTTON_COUNT]bool,
+
+	pressed_id:   [MOUSE_BUTTON_COUNT]UI_ID,
+	pressed_rect: [MOUSE_BUTTON_COUNT]Cell_Rect,
+
+	hit_any:       bool,
+	activated_any: bool,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name mouse-button-index
+mouse_button_index :: proc(button: Mouse_Button) -> int {
+	return int(button)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-begin-frame
+ui_begin_frame :: proc(state: ^UI_State, input: Mouse_Input) {
+	for i in 0..<MOUSE_BUTTON_COUNT {
+		if state.previous_down[i] && !state.mouse.down[i] {
+			state.pressed_id[i] = UI_ID_NONE
+			state.pressed_rect[i] = Cell_Rect{}
+		}
+
+		state.previous_down[i] = state.mouse.down[i]
+	}
+
+	state.mouse = input
+	state.hit_any = false
+	state.activated_any = false
+}
+#+end_src
+
+** Activation
+
+=ui_hit= marks advisory =hit_any=. =ui_activate= records press origin and
+returns true only when press and release both occur inside the same =id, rect=
+pair.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-hit
+ui_hit :: proc(state: ^UI_State, rect: Cell_Rect) -> bool {
+	hit := contains(rect, state.mouse.x, state.mouse.y)
+	if hit {
+		state.hit_any = true
+	}
+	return hit
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-activate
+ui_activate :: proc(state: ^UI_State, id: UI_ID, rect: Cell_Rect, button: Mouse_Button = .Left) -> bool {
+	index := mouse_button_index(button)
+	hit := ui_hit(state, rect)
+	pressed := !state.previous_down[index] && state.mouse.down[index]
+	released := state.previous_down[index] && !state.mouse.down[index]
+
+	if pressed && hit {
+		state.pressed_id[index] = id
+		state.pressed_rect[index] = rect
+	}
+
+	activated := released &&
+	             hit &&
+	             state.pressed_id[index] == id &&
+	             state.pressed_rect[index] == rect
+	if activated {
+		state.activated_any = true
+	}
+	return activated
+}
+#+end_src
+
 ** Geometry Constructors
 
 Constructors assert positive dimensions. Callers should not pass invalid
@@ -182,5 +285,95 @@ test_cell_rect_rejects_non_positive_width :: proc(t: ^testing.T) {
 test_cell_rect_rejects_non_positive_height :: proc(t: ^testing.T) {
 	testing.expect_assert(t, "Cell_Rect height must be positive")
 	_ = cell_rect(0, 0, 1, 0)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-mouse-input-helper
+test_mouse_input :: proc(x, y: int, left := false, middle := false, right := false) -> Mouse_Input {
+	return Mouse_Input{x = x, y = y, down = [MOUSE_BUTTON_COUNT]bool{left, middle, right}}
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-hit
+@(test)
+test_ui_hit_sets_hit_any :: proc(t: ^testing.T) {
+	state: UI_State
+	rect := cell_rect(1, 1, 2, 2)
+
+	ui_begin_frame(&state, test_mouse_input(8, 16))
+	testing.expect(t, ui_hit(&state, rect))
+	testing.expect(t, state.hit_any)
+	testing.expect(t, !state.activated_any)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-activation-release-inside
+@(test)
+test_ui_activate_requires_press_and_release_inside_same_control :: proc(t: ^testing.T) {
+	state: UI_State
+	rect := cell_rect(1, 1, 2, 2)
+	id := UI_ID(10)
+
+	ui_begin_frame(&state, test_mouse_input(8, 16, left = true))
+	testing.expect(t, !ui_activate(&state, id, rect))
+	testing.expect(t, state.hit_any)
+
+	ui_begin_frame(&state, test_mouse_input(9, 17, left = false))
+	testing.expect(t, ui_activate(&state, id, rect))
+	testing.expect(t, state.activated_any)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-activation-release-other
+@(test)
+test_ui_activate_rejects_release_inside_different_control :: proc(t: ^testing.T) {
+	state: UI_State
+	a := cell_rect(1, 1, 2, 2)
+	b := cell_rect(4, 1, 2, 2)
+
+	ui_begin_frame(&state, test_mouse_input(8, 16, left = true))
+	testing.expect(t, !ui_activate(&state, UI_ID(1), a))
+	testing.expect(t, !ui_activate(&state, UI_ID(2), b))
+
+	ui_begin_frame(&state, test_mouse_input(32, 16, left = false))
+	testing.expect(t, !ui_activate(&state, UI_ID(2), b))
+	testing.expect(t, !ui_activate(&state, UI_ID(1), a))
+	testing.expect(t, !state.activated_any)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-activation-return
+@(test)
+test_ui_activate_allows_leave_return_release :: proc(t: ^testing.T) {
+	state: UI_State
+	rect := cell_rect(1, 1, 2, 2)
+	id := UI_ID(20)
+
+	ui_begin_frame(&state, test_mouse_input(8, 16, left = true))
+	testing.expect(t, !ui_activate(&state, id, rect))
+
+	ui_begin_frame(&state, test_mouse_input(80, 80, left = true))
+	testing.expect(t, !ui_activate(&state, id, rect))
+
+	ui_begin_frame(&state, test_mouse_input(9, 17, left = false))
+	testing.expect(t, ui_activate(&state, id, rect))
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-activation-clear-next-frame
+@(test)
+test_ui_begin_frame_clears_press_origin_after_release_frame :: proc(t: ^testing.T) {
+	state: UI_State
+	rect := cell_rect(1, 1, 2, 2)
+	id := UI_ID(30)
+
+	ui_begin_frame(&state, test_mouse_input(8, 16, left = true))
+	testing.expect(t, !ui_activate(&state, id, rect))
+
+	ui_begin_frame(&state, test_mouse_input(9, 17, left = false))
+	testing.expect(t, ui_activate(&state, id, rect))
+
+	ui_begin_frame(&state, test_mouse_input(9, 17, left = false))
+	testing.expect_value(t, state.pressed_id[mouse_button_index(.Left)], UI_ID_NONE)
 }
 #+end_src
