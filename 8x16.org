@@ -147,6 +147,29 @@ UI_State :: struct {
 }
 #+end_src
 
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-context
+UI :: struct {
+	state: ^UI_State,
+	draw:  ^Draw_Buffer,
+	style: UI_Style,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-context-proc
+ui_context :: proc {
+	ui_context_default,
+	ui_context_with_style,
+}
+
+ui_context_default :: proc(state: ^UI_State, draw: ^Draw_Buffer) -> UI {
+	return ui_context_with_style(state, draw, default_style())
+}
+
+ui_context_with_style :: proc(state: ^UI_State, draw: ^Draw_Buffer, style: UI_Style) -> UI {
+	return UI{state = state, draw = draw, style = style}
+}
+#+end_src
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name mouse-button-index
 mouse_button_index :: proc(button: Mouse_Button) -> int {
 	return int(button)
@@ -420,6 +443,142 @@ draw_bar :: proc(buffer: ^Draw_Buffer, rect: Cell_Rect, fill_width_px: int, colo
 }
 #+end_src
 
+** Controls
+
+Controls emit draw commands and return events. They do not own caller state.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name text-width-px
+text_width_px :: proc(text: string) -> int {
+	return len(text) * CELL_WIDTH
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-text-overflow
+debug_text_overflow :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect, text: string, measured_width, available_width: int) -> bool {
+	if buffer == nil {
+		return false
+	}
+
+	for i in 0..<buffer.count {
+		warning := buffer.warnings[i]
+		if warning.kind == .Text_Overflow && warning.id == id {
+			return false
+		}
+	}
+
+	return debug_push(buffer, Debug_Warning{
+		kind = .Text_Overflow,
+		id = id,
+		rect = rect,
+		text = text,
+		measured_width = measured_width,
+		available_width = available_width,
+	})
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-text
+ui_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, text: string, color: Color) {
+	ui_hit(ui.state, rect)
+
+	measured_width := text_width_px(text)
+	available_width := rect.w * CELL_WIDTH
+	if measured_width > available_width {
+		debug_text_overflow(ui.draw.debug, id, rect, text, measured_width, available_width)
+	}
+
+	draw_text(ui.draw, rect, text, color)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-box
+ui_box :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, fill, line: Color) {
+	ui_hit(ui.state, rect)
+	draw_box(ui.draw, rect, fill, line)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-panel
+ui_panel :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect) {
+	ui_box(ui, id, rect, ui.style.panel, ui.style.line)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-bar
+ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill: Color) {
+	ui_hit(ui.state, rect)
+
+	fill_width := 0
+	if max_value > 0 {
+		px := rect_px(rect)
+		fill_width = px.w * int_clamp(value, 0, max_value) / max_value
+	}
+
+	draw_bar(ui.draw, rect, fill_width, fill, ui.style.bar_empty, ui.style.line)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-button
+ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string) -> bool {
+	activated := ui_activate(ui.state, id, rect)
+	pressed := ui.state.mouse.down[mouse_button_index(.Left)] &&
+	           ui.state.pressed_id[mouse_button_index(.Left)] == id &&
+	           ui.state.pressed_rect[mouse_button_index(.Left)] == rect
+
+	fill := ui.style.button_fill
+	text_color := ui.style.button_text
+	if pressed {
+		fill = ui.style.button_active_fill
+		text_color = ui.style.button_active_text
+	}
+
+	draw_box(ui.draw, rect, fill, ui.style.line)
+	ui_text(ui, id, rect, label, text_color)
+	return activated
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-toggle
+ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool) -> bool {
+	activated := ui_activate(ui.state, id, rect)
+
+	fill := ui.style.button_fill
+	text_color := ui.style.button_text
+	if active {
+		fill = ui.style.button_active_fill
+		text_color = ui.style.button_active_text
+	}
+
+	draw_box(ui.draw, rect, fill, ui.style.line)
+	ui_text(ui, id, rect, label, text_color)
+	return activated
+}
+#+end_src
+
+* Example Surfaces
+
+#+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name examples-package
+package ui8x16
+#+end_src
+
+#+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-toolbar
+example_toolbar_surface :: proc(ui: ^UI, toggle_active: bool) -> (button_activated, toggle_activated: bool) {
+	ui_panel(ui, UI_ID(100), cell_rect(0, 0, 24, 3))
+	ui_text(ui, UI_ID(101), cell_rect(1, 0, 8, 1), "tools", ui.style.text)
+	button_activated = ui_button(ui, UI_ID(102), cell_rect(1, 1, 8, 1), "run")
+	toggle_activated = ui_toggle(ui, UI_ID(103), cell_rect(10, 1, 10, 1), "snap", toggle_active)
+	return
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-status
+example_status_surface :: proc(ui: ^UI, progress, max_progress: int) {
+	ui_panel(ui, UI_ID(200), cell_rect(0, 0, 32, 4))
+	ui_text(ui, UI_ID(201), cell_rect(1, 0, 12, 1), "status", ui.style.text)
+	ui_bar(ui, UI_ID(202), cell_rect(1, 2, 30, 1), progress, max_progress, ui.style.bar_fill)
+}
+#+end_src
+
 * Tests
 
 #+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-package
@@ -637,5 +796,113 @@ test_draw_buffer_overflow_records_debug_warning :: proc(t: ^testing.T) {
 	testing.expect_value(t, buffer.overflow_count, 1)
 	testing.expect_value(t, debug.count, 1)
 	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Draw_Command_Overflow)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-helper
+test_ui_init :: proc(ui: ^UI, state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer, command_storage: []Draw_Command, warning_storage: []Debug_Warning) {
+	debug^ = Debug_Buffer{warnings = warning_storage}
+	draw^ = Draw_Buffer{commands = command_storage, debug = debug}
+	ui^ = ui_context(state, draw)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-text
+@(test)
+test_ui_text_emits_command_and_dedupes_overflow_warning :: proc(t: ^testing.T) {
+	command_storage: [2]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
+	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
+
+	testing.expect_value(t, draw.count, 2)
+	testing.expect_value(t, debug.count, 1)
+	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Text_Overflow)
+	testing.expect_value(t, debug.warnings[0].measured_width, 24)
+	testing.expect_value(t, debug.warnings[0].available_width, 8)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-button
+@(test)
+test_ui_button_returns_release_inside_activation :: proc(t: ^testing.T) {
+	command_storage: [8]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	rect := cell_rect(0, 0, 4, 1)
+
+	ui_begin_frame(&state, test_mouse_input(0, 0, left = true))
+	testing.expect(t, !ui_button(&ui, UI_ID(2), rect, "go"))
+
+	ui_begin_frame(&state, test_mouse_input(1, 1, left = false))
+	testing.expect(t, ui_button(&ui, UI_ID(2), rect, "go"))
+	testing.expect(t, state.activated_any)
+	testing.expect(t, draw.count >= 4)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-toggle
+@(test)
+test_ui_toggle_uses_active_style_and_returns_event :: proc(t: ^testing.T) {
+	command_storage: [4]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+
+	ui_begin_frame(&state, test_mouse_input(0, 0, left = true))
+	testing.expect(t, !ui_toggle(&ui, UI_ID(3), cell_rect(0, 0, 6, 1), "snap", true))
+	testing.expect_value(t, draw.commands[0].box.fill, ui.style.button_active_fill)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-bar
+@(test)
+test_ui_bar_emits_proportional_fill :: proc(t: ^testing.T) {
+	command_storage: [1]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	ui_bar(&ui, UI_ID(4), cell_rect(0, 0, 10, 1), 3, 10, ui.style.bar_fill)
+	testing.expect_value(t, draw.commands[0].bar.fill.w, 24)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-examples
+@(test)
+test_example_surfaces_emit_commands :: proc(t: ^testing.T) {
+	command_storage: [16]Draw_Command
+	warning_storage: [4]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	button, toggle := example_toolbar_surface(&ui, false)
+	example_status_surface(&ui, 5, 10)
+
+	testing.expect(t, !button)
+	testing.expect(t, !toggle)
+	testing.expect(t, draw.count > 0)
 }
 #+end_src

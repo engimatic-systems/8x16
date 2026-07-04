@@ -217,3 +217,111 @@ test_draw_buffer_overflow_records_debug_warning :: proc(t: ^testing.T) {
 	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Draw_Command_Overflow)
 }
 // END org:block test-draw-overflow
+
+// BEGIN org:block test-ui-helper
+test_ui_init :: proc(ui: ^UI, state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer, command_storage: []Draw_Command, warning_storage: []Debug_Warning) {
+	debug^ = Debug_Buffer{warnings = warning_storage}
+	draw^ = Draw_Buffer{commands = command_storage, debug = debug}
+	ui^ = ui_context(state, draw)
+}
+// END org:block test-ui-helper
+
+// BEGIN org:block test-ui-text
+@(test)
+test_ui_text_emits_command_and_dedupes_overflow_warning :: proc(t: ^testing.T) {
+	command_storage: [2]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
+	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
+
+	testing.expect_value(t, draw.count, 2)
+	testing.expect_value(t, debug.count, 1)
+	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Text_Overflow)
+	testing.expect_value(t, debug.warnings[0].measured_width, 24)
+	testing.expect_value(t, debug.warnings[0].available_width, 8)
+}
+// END org:block test-ui-text
+
+// BEGIN org:block test-ui-button
+@(test)
+test_ui_button_returns_release_inside_activation :: proc(t: ^testing.T) {
+	command_storage: [8]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	rect := cell_rect(0, 0, 4, 1)
+
+	ui_begin_frame(&state, test_mouse_input(0, 0, left = true))
+	testing.expect(t, !ui_button(&ui, UI_ID(2), rect, "go"))
+
+	ui_begin_frame(&state, test_mouse_input(1, 1, left = false))
+	testing.expect(t, ui_button(&ui, UI_ID(2), rect, "go"))
+	testing.expect(t, state.activated_any)
+	testing.expect(t, draw.count >= 4)
+}
+// END org:block test-ui-button
+
+// BEGIN org:block test-ui-toggle
+@(test)
+test_ui_toggle_uses_active_style_and_returns_event :: proc(t: ^testing.T) {
+	command_storage: [4]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+
+	ui_begin_frame(&state, test_mouse_input(0, 0, left = true))
+	testing.expect(t, !ui_toggle(&ui, UI_ID(3), cell_rect(0, 0, 6, 1), "snap", true))
+	testing.expect_value(t, draw.commands[0].box.fill, ui.style.button_active_fill)
+}
+// END org:block test-ui-toggle
+
+// BEGIN org:block test-ui-bar
+@(test)
+test_ui_bar_emits_proportional_fill :: proc(t: ^testing.T) {
+	command_storage: [1]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	ui_bar(&ui, UI_ID(4), cell_rect(0, 0, 10, 1), 3, 10, ui.style.bar_fill)
+	testing.expect_value(t, draw.commands[0].bar.fill.w, 24)
+}
+// END org:block test-ui-bar
+
+// BEGIN org:block test-examples
+@(test)
+test_example_surfaces_emit_commands :: proc(t: ^testing.T) {
+	command_storage: [16]Draw_Command
+	warning_storage: [4]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	button, toggle := example_toolbar_surface(&ui, false)
+	example_status_surface(&ui, 5, 10)
+
+	testing.expect(t, !button)
+	testing.expect(t, !toggle)
+	testing.expect(t, draw.count > 0)
+}
+// END org:block test-examples

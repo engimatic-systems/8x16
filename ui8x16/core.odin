@@ -103,6 +103,29 @@ UI_State :: struct {
 }
 // END org:block ui-state
 
+// BEGIN org:block ui-context
+UI :: struct {
+	state: ^UI_State,
+	draw:  ^Draw_Buffer,
+	style: UI_Style,
+}
+// END org:block ui-context
+
+// BEGIN org:block ui-context-proc
+ui_context :: proc {
+	ui_context_default,
+	ui_context_with_style,
+}
+
+ui_context_default :: proc(state: ^UI_State, draw: ^Draw_Buffer) -> UI {
+	return ui_context_with_style(state, draw, default_style())
+}
+
+ui_context_with_style :: proc(state: ^UI_State, draw: ^Draw_Buffer, style: UI_Style) -> UI {
+	return UI{state = state, draw = draw, style = style}
+}
+// END org:block ui-context-proc
+
 // BEGIN org:block mouse-button-index
 mouse_button_index :: proc(button: Mouse_Button) -> int {
 	return int(button)
@@ -347,3 +370,111 @@ draw_bar :: proc(buffer: ^Draw_Buffer, rect: Cell_Rect, fill_width_px: int, colo
 	})
 }
 // END org:block draw-bar
+
+// BEGIN org:block text-width-px
+text_width_px :: proc(text: string) -> int {
+	return len(text) * CELL_WIDTH
+}
+// END org:block text-width-px
+
+// BEGIN org:block debug-text-overflow
+debug_text_overflow :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect, text: string, measured_width, available_width: int) -> bool {
+	if buffer == nil {
+		return false
+	}
+
+	for i in 0..<buffer.count {
+		warning := buffer.warnings[i]
+		if warning.kind == .Text_Overflow && warning.id == id {
+			return false
+		}
+	}
+
+	return debug_push(buffer, Debug_Warning{
+		kind = .Text_Overflow,
+		id = id,
+		rect = rect,
+		text = text,
+		measured_width = measured_width,
+		available_width = available_width,
+	})
+}
+// END org:block debug-text-overflow
+
+// BEGIN org:block ui-text
+ui_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, text: string, color: Color) {
+	ui_hit(ui.state, rect)
+
+	measured_width := text_width_px(text)
+	available_width := rect.w * CELL_WIDTH
+	if measured_width > available_width {
+		debug_text_overflow(ui.draw.debug, id, rect, text, measured_width, available_width)
+	}
+
+	draw_text(ui.draw, rect, text, color)
+}
+// END org:block ui-text
+
+// BEGIN org:block ui-box
+ui_box :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, fill, line: Color) {
+	ui_hit(ui.state, rect)
+	draw_box(ui.draw, rect, fill, line)
+}
+// END org:block ui-box
+
+// BEGIN org:block ui-panel
+ui_panel :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect) {
+	ui_box(ui, id, rect, ui.style.panel, ui.style.line)
+}
+// END org:block ui-panel
+
+// BEGIN org:block ui-bar
+ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill: Color) {
+	ui_hit(ui.state, rect)
+
+	fill_width := 0
+	if max_value > 0 {
+		px := rect_px(rect)
+		fill_width = px.w * int_clamp(value, 0, max_value) / max_value
+	}
+
+	draw_bar(ui.draw, rect, fill_width, fill, ui.style.bar_empty, ui.style.line)
+}
+// END org:block ui-bar
+
+// BEGIN org:block ui-button
+ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string) -> bool {
+	activated := ui_activate(ui.state, id, rect)
+	pressed := ui.state.mouse.down[mouse_button_index(.Left)] &&
+	           ui.state.pressed_id[mouse_button_index(.Left)] == id &&
+	           ui.state.pressed_rect[mouse_button_index(.Left)] == rect
+
+	fill := ui.style.button_fill
+	text_color := ui.style.button_text
+	if pressed {
+		fill = ui.style.button_active_fill
+		text_color = ui.style.button_active_text
+	}
+
+	draw_box(ui.draw, rect, fill, ui.style.line)
+	ui_text(ui, id, rect, label, text_color)
+	return activated
+}
+// END org:block ui-button
+
+// BEGIN org:block ui-toggle
+ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool) -> bool {
+	activated := ui_activate(ui.state, id, rect)
+
+	fill := ui.style.button_fill
+	text_color := ui.style.button_text
+	if active {
+		fill = ui.style.button_active_fill
+		text_color = ui.style.button_active_text
+	}
+
+	draw_box(ui.draw, rect, fill, ui.style.line)
+	ui_text(ui, id, rect, label, text_color)
+	return activated
+}
+// END org:block ui-toggle
