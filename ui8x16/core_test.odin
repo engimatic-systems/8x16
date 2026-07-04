@@ -8,6 +8,52 @@ package ui8x16
 import "core:testing"
 // END org:block test-imports
 
+// BEGIN org:block test-command-helpers
+expect_fill_rect :: proc(t: ^testing.T, command: Draw_Command, rect: Pixel_Rect, color: Color) {
+	payload, ok := command.(Fill_Rect_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.rect, rect)
+		testing.expect_value(t, payload.color, color)
+	}
+}
+
+expect_stroke_rect :: proc(t: ^testing.T, command: Draw_Command, rect: Pixel_Rect, color: Color) {
+	payload, ok := command.(Stroke_Rect_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.rect, rect)
+		testing.expect_value(t, payload.color, color)
+	}
+}
+
+expect_text :: proc(t: ^testing.T, command: Draw_Command, pos: Pixel_Point, text: string, color: Color, scale: int) {
+	payload, ok := command.(Text_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.pos, pos)
+		testing.expect_value(t, payload.text, text)
+		testing.expect_value(t, payload.color, color)
+		testing.expect_value(t, payload.scale, scale)
+	}
+}
+
+expect_fill_rect_kind :: proc(t: ^testing.T, command: Draw_Command) {
+	_, ok := command.(Fill_Rect_Command)
+	testing.expect(t, ok)
+}
+
+expect_stroke_rect_kind :: proc(t: ^testing.T, command: Draw_Command) {
+	_, ok := command.(Stroke_Rect_Command)
+	testing.expect(t, ok)
+}
+
+expect_text_kind :: proc(t: ^testing.T, command: Draw_Command) {
+	_, ok := command.(Text_Command)
+	testing.expect(t, ok)
+}
+// END org:block test-command-helpers
+
 // BEGIN org:block test-cell-rect
 @(test)
 test_cell_rect_keeps_absolute_values :: proc(t: ^testing.T) {
@@ -164,9 +210,7 @@ test_draw_fill_rect_appends_primitive_command :: proc(t: ^testing.T) {
 	draw_fill_rect(&buffer, rect, color)
 
 	testing.expect_value(t, buffer.count, 1)
-	testing.expect_value(t, buffer.commands[0].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, buffer.commands[0].fill_rect.rect, rect)
-	testing.expect_value(t, buffer.commands[0].fill_rect.color, color)
+	expect_fill_rect(t, buffer.commands[0], rect, color)
 }
 // END org:block test-draw-fill-rect
 
@@ -181,9 +225,7 @@ test_draw_stroke_rect_appends_primitive_command :: proc(t: ^testing.T) {
 	draw_stroke_rect(&buffer, rect, color)
 
 	testing.expect_value(t, buffer.count, 1)
-	testing.expect_value(t, buffer.commands[0].kind, Draw_Command_Kind.Stroke_Rect)
-	testing.expect_value(t, buffer.commands[0].stroke_rect.rect, rect)
-	testing.expect_value(t, buffer.commands[0].stroke_rect.color, color)
+	expect_stroke_rect(t, buffer.commands[0], rect, color)
 }
 // END org:block test-draw-stroke-rect
 
@@ -198,11 +240,7 @@ test_draw_text_uses_pixel_origin_and_scale :: proc(t: ^testing.T) {
 	draw_text(&buffer, pos, "ok", color, 2)
 
 	testing.expect_value(t, buffer.count, 1)
-	testing.expect_value(t, buffer.commands[0].kind, Draw_Command_Kind.Text)
-	testing.expect_value(t, buffer.commands[0].text.pos, pos)
-	testing.expect_value(t, buffer.commands[0].text.text, "ok")
-	testing.expect_value(t, buffer.commands[0].text.color, color)
-	testing.expect_value(t, buffer.commands[0].text.scale, 2)
+	expect_text(t, buffer.commands[0], pos, "ok", color, 2)
 }
 // END org:block test-draw-text
 
@@ -219,9 +257,9 @@ test_draw_commands_keep_append_order :: proc(t: ^testing.T) {
 
 	commands := ui_end(&buffer)
 	testing.expect_value(t, len(commands), 3)
-	testing.expect_value(t, commands[0].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, commands[1].kind, Draw_Command_Kind.Stroke_Rect)
-	testing.expect_value(t, commands[2].kind, Draw_Command_Kind.Text)
+	expect_fill_rect_kind(t, commands[0])
+	expect_stroke_rect_kind(t, commands[1])
+	expect_text_kind(t, commands[2])
 }
 // END org:block test-draw-order
 

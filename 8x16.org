@@ -235,23 +235,22 @@ contains :: proc(rect: Cell_Rect, x, y: int) -> bool {
 The draw buffer contains backend-ready primitive commands only. Semantic UI
 concepts compile to these commands before a renderer sees them.
 
-#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-command-kind
-Draw_Command_Kind :: enum {
-	Fill_Rect,
-	Stroke_Rect,
-	Text,
-}
-#+end_src
-
-#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-rect-command
-Draw_Rect_Command :: struct {
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name fill-rect-command
+Fill_Rect_Command :: struct {
 	rect:  Pixel_Rect,
 	color: Color,
 }
 #+end_src
 
-#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-text-command
-Draw_Text_Command :: struct {
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name stroke-rect-command
+Stroke_Rect_Command :: struct {
+	rect:  Pixel_Rect,
+	color: Color,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name text-command
+Text_Command :: struct {
 	pos:   Pixel_Point,
 	text:  string,
 	color: Color,
@@ -260,11 +259,10 @@ Draw_Text_Command :: struct {
 #+end_src
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-command
-Draw_Command :: struct {
-	kind:        Draw_Command_Kind,
-	fill_rect:   Draw_Rect_Command,
-	stroke_rect: Draw_Rect_Command,
-	text:        Draw_Text_Command,
+Draw_Command :: union {
+	Fill_Rect_Command,
+	Stroke_Rect_Command,
+	Text_Command,
 }
 #+end_src
 
@@ -297,29 +295,20 @@ draw_push :: proc(buffer: ^Draw_Buffer, command: Draw_Command) {
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-fill-rect
 draw_fill_rect :: proc(buffer: ^Draw_Buffer, rect: Pixel_Rect, color: Color) {
-	draw_push(buffer, Draw_Command{
-		kind = .Fill_Rect,
-		fill_rect = Draw_Rect_Command{rect = rect, color = color},
-	})
+	draw_push(buffer, Draw_Command(Fill_Rect_Command{rect = rect, color = color}))
 }
 #+end_src
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-stroke-rect
 draw_stroke_rect :: proc(buffer: ^Draw_Buffer, rect: Pixel_Rect, color: Color) {
-	draw_push(buffer, Draw_Command{
-		kind = .Stroke_Rect,
-		stroke_rect = Draw_Rect_Command{rect = rect, color = color},
-	})
+	draw_push(buffer, Draw_Command(Stroke_Rect_Command{rect = rect, color = color}))
 }
 #+end_src
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-text
 draw_text :: proc(buffer: ^Draw_Buffer, pos: Pixel_Point, text: string, color: Color, scale: int) {
 	assert(text_scale_valid(scale), "Text scale must be 1..4")
-	draw_push(buffer, Draw_Command{
-		kind = .Text,
-		text = Draw_Text_Command{pos = pos, text = text, color = color, scale = scale},
-	})
+	draw_push(buffer, Draw_Command(Text_Command{pos = pos, text = text, color = color, scale = scale}))
 }
 #+end_src
 
@@ -337,6 +326,52 @@ package ui8x16
 
 #+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-imports
 import "core:testing"
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-command-helpers
+expect_fill_rect :: proc(t: ^testing.T, command: Draw_Command, rect: Pixel_Rect, color: Color) {
+	payload, ok := command.(Fill_Rect_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.rect, rect)
+		testing.expect_value(t, payload.color, color)
+	}
+}
+
+expect_stroke_rect :: proc(t: ^testing.T, command: Draw_Command, rect: Pixel_Rect, color: Color) {
+	payload, ok := command.(Stroke_Rect_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.rect, rect)
+		testing.expect_value(t, payload.color, color)
+	}
+}
+
+expect_text :: proc(t: ^testing.T, command: Draw_Command, pos: Pixel_Point, text: string, color: Color, scale: int) {
+	payload, ok := command.(Text_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.pos, pos)
+		testing.expect_value(t, payload.text, text)
+		testing.expect_value(t, payload.color, color)
+		testing.expect_value(t, payload.scale, scale)
+	}
+}
+
+expect_fill_rect_kind :: proc(t: ^testing.T, command: Draw_Command) {
+	_, ok := command.(Fill_Rect_Command)
+	testing.expect(t, ok)
+}
+
+expect_stroke_rect_kind :: proc(t: ^testing.T, command: Draw_Command) {
+	_, ok := command.(Stroke_Rect_Command)
+	testing.expect(t, ok)
+}
+
+expect_text_kind :: proc(t: ^testing.T, command: Draw_Command) {
+	_, ok := command.(Text_Command)
+	testing.expect(t, ok)
+}
 #+end_src
 
 #+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-cell-rect
@@ -495,9 +530,7 @@ test_draw_fill_rect_appends_primitive_command :: proc(t: ^testing.T) {
 	draw_fill_rect(&buffer, rect, color)
 
 	testing.expect_value(t, buffer.count, 1)
-	testing.expect_value(t, buffer.commands[0].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, buffer.commands[0].fill_rect.rect, rect)
-	testing.expect_value(t, buffer.commands[0].fill_rect.color, color)
+	expect_fill_rect(t, buffer.commands[0], rect, color)
 }
 #+end_src
 
@@ -512,9 +545,7 @@ test_draw_stroke_rect_appends_primitive_command :: proc(t: ^testing.T) {
 	draw_stroke_rect(&buffer, rect, color)
 
 	testing.expect_value(t, buffer.count, 1)
-	testing.expect_value(t, buffer.commands[0].kind, Draw_Command_Kind.Stroke_Rect)
-	testing.expect_value(t, buffer.commands[0].stroke_rect.rect, rect)
-	testing.expect_value(t, buffer.commands[0].stroke_rect.color, color)
+	expect_stroke_rect(t, buffer.commands[0], rect, color)
 }
 #+end_src
 
@@ -529,11 +560,7 @@ test_draw_text_uses_pixel_origin_and_scale :: proc(t: ^testing.T) {
 	draw_text(&buffer, pos, "ok", color, 2)
 
 	testing.expect_value(t, buffer.count, 1)
-	testing.expect_value(t, buffer.commands[0].kind, Draw_Command_Kind.Text)
-	testing.expect_value(t, buffer.commands[0].text.pos, pos)
-	testing.expect_value(t, buffer.commands[0].text.text, "ok")
-	testing.expect_value(t, buffer.commands[0].text.color, color)
-	testing.expect_value(t, buffer.commands[0].text.scale, 2)
+	expect_text(t, buffer.commands[0], pos, "ok", color, 2)
 }
 #+end_src
 
@@ -550,9 +577,9 @@ test_draw_commands_keep_append_order :: proc(t: ^testing.T) {
 
 	commands := ui_end(&buffer)
 	testing.expect_value(t, len(commands), 3)
-	testing.expect_value(t, commands[0].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, commands[1].kind, Draw_Command_Kind.Stroke_Rect)
-	testing.expect_value(t, commands[2].kind, Draw_Command_Kind.Text)
+	expect_fill_rect_kind(t, commands[0])
+	expect_stroke_rect_kind(t, commands[1])
+	expect_text_kind(t, commands[2])
 }
 #+end_src
 

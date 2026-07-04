@@ -162,36 +162,34 @@ contains :: proc(rect: Cell_Rect, x, y: int) -> bool {
 }
 // END org:block contains
 
-// BEGIN org:block draw-command-kind
-Draw_Command_Kind :: enum {
-	Fill_Rect,
-	Stroke_Rect,
-	Text,
-}
-// END org:block draw-command-kind
-
-// BEGIN org:block draw-rect-command
-Draw_Rect_Command :: struct {
+// BEGIN org:block fill-rect-command
+Fill_Rect_Command :: struct {
 	rect:  Pixel_Rect,
 	color: Color,
 }
-// END org:block draw-rect-command
+// END org:block fill-rect-command
 
-// BEGIN org:block draw-text-command
-Draw_Text_Command :: struct {
+// BEGIN org:block stroke-rect-command
+Stroke_Rect_Command :: struct {
+	rect:  Pixel_Rect,
+	color: Color,
+}
+// END org:block stroke-rect-command
+
+// BEGIN org:block text-command
+Text_Command :: struct {
 	pos:   Pixel_Point,
 	text:  string,
 	color: Color,
 	scale: int,
 }
-// END org:block draw-text-command
+// END org:block text-command
 
 // BEGIN org:block draw-command
-Draw_Command :: struct {
-	kind:        Draw_Command_Kind,
-	fill_rect:   Draw_Rect_Command,
-	stroke_rect: Draw_Rect_Command,
-	text:        Draw_Text_Command,
+Draw_Command :: union {
+	Fill_Rect_Command,
+	Stroke_Rect_Command,
+	Text_Command,
 }
 // END org:block draw-command
 
@@ -224,29 +222,20 @@ draw_push :: proc(buffer: ^Draw_Buffer, command: Draw_Command) {
 
 // BEGIN org:block draw-fill-rect
 draw_fill_rect :: proc(buffer: ^Draw_Buffer, rect: Pixel_Rect, color: Color) {
-	draw_push(buffer, Draw_Command{
-		kind = .Fill_Rect,
-		fill_rect = Draw_Rect_Command{rect = rect, color = color},
-	})
+	draw_push(buffer, Draw_Command(Fill_Rect_Command{rect = rect, color = color}))
 }
 // END org:block draw-fill-rect
 
 // BEGIN org:block draw-stroke-rect
 draw_stroke_rect :: proc(buffer: ^Draw_Buffer, rect: Pixel_Rect, color: Color) {
-	draw_push(buffer, Draw_Command{
-		kind = .Stroke_Rect,
-		stroke_rect = Draw_Rect_Command{rect = rect, color = color},
-	})
+	draw_push(buffer, Draw_Command(Stroke_Rect_Command{rect = rect, color = color}))
 }
 // END org:block draw-stroke-rect
 
 // BEGIN org:block draw-text
 draw_text :: proc(buffer: ^Draw_Buffer, pos: Pixel_Point, text: string, color: Color, scale: int) {
 	assert(text_scale_valid(scale), "Text scale must be 1..4")
-	draw_push(buffer, Draw_Command{
-		kind = .Text,
-		text = Draw_Text_Command{pos = pos, text = text, color = color, scale = scale},
-	})
+	draw_push(buffer, Draw_Command(Text_Command{pos = pos, text = text, color = color, scale = scale}))
 }
 // END org:block draw-text
 
