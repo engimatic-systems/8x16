@@ -59,6 +59,44 @@ Color :: struct {
 }
 #+end_src
 
+** Style
+
+=UI_Style= owns only toolkit chrome colors. Domain colors remain caller-owned.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-style
+UI_Style :: struct {
+	text: Color,
+	line: Color,
+	panel: Color,
+
+	button_fill:        Color,
+	button_text:        Color,
+	button_active_fill: Color,
+	button_active_text: Color,
+
+	bar_fill:  Color,
+	bar_empty: Color,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name default-style
+default_style :: proc() -> UI_Style {
+	return UI_Style{
+		text = Color{r = 230, g = 230, b = 230, a = 255},
+		line = Color{r = 80, g = 80, b = 80, a = 255},
+		panel = Color{r = 24, g = 24, b = 24, a = 255},
+
+		button_fill = Color{r = 48, g = 48, b = 48, a = 255},
+		button_text = Color{r = 235, g = 235, b = 235, a = 255},
+		button_active_fill = Color{r = 220, g = 220, b = 220, a = 255},
+		button_active_text = Color{r = 16, g = 16, b = 16, a = 255},
+
+		bar_fill = Color{r = 96, g = 180, b = 120, a = 255},
+		bar_empty = Color{r = 44, g = 44, b = 44, a = 255},
+	}
+}
+#+end_src
+
 ** UI Identity
 
 =UI_ID= gives controls a caller-owned stable identity without imposing labels,
@@ -219,6 +257,165 @@ contains :: proc(rect: Cell_Rect, x, y: int) -> bool {
 }
 #+end_src
 
+** Draw Commands
+
+Draw commands are plain data. They store pixel rectangles so a backend such as
+raylib can translate them directly.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-command-kind
+Draw_Command_Kind :: enum {
+	Box,
+	Text,
+	Bar,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-box-command
+Draw_Box_Command :: struct {
+	rect: Pixel_Rect,
+	fill: Color,
+	line: Color,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-text-command
+Draw_Text_Command :: struct {
+	rect:  Pixel_Rect,
+	text:  string,
+	color: Color,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-bar-command
+Draw_Bar_Command :: struct {
+	rect:  Pixel_Rect,
+	fill:  Pixel_Rect,
+	empty: Color,
+	color: Color,
+	line:  Color,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-command
+Draw_Command :: struct {
+	kind: Draw_Command_Kind,
+	box:  Draw_Box_Command,
+	text: Draw_Text_Command,
+	bar:  Draw_Bar_Command,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-warning-kind
+Debug_Warning_Kind :: enum {
+	Draw_Command_Overflow,
+	Text_Overflow,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-warning
+Debug_Warning :: struct {
+	kind: Debug_Warning_Kind,
+	id:   UI_ID,
+	rect: Cell_Rect,
+
+	text:           string,
+	measured_width: int,
+	available_width: int,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-buffer
+Debug_Buffer :: struct {
+	warnings: []Debug_Warning,
+	count:    int,
+
+	overflowed: bool,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-buffer
+Draw_Buffer :: struct {
+	commands: []Draw_Command,
+	count:    int,
+
+	overflow_count: int,
+	debug:          ^Debug_Buffer,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name int-clamp
+int_clamp :: proc(value, low, high: int) -> int {
+	if value < low {
+		return low
+	}
+	if value > high {
+		return high
+	}
+	return value
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-push
+debug_push :: proc(buffer: ^Debug_Buffer, warning: Debug_Warning) -> bool {
+	if buffer == nil {
+		return false
+	}
+	if buffer.count >= len(buffer.warnings) {
+		buffer.overflowed = true
+		return false
+	}
+
+	buffer.warnings[buffer.count] = warning
+	buffer.count += 1
+	return true
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-push
+draw_push :: proc(buffer: ^Draw_Buffer, command: Draw_Command) -> bool {
+	if buffer.count >= len(buffer.commands) {
+		buffer.overflow_count += 1
+		debug_push(buffer.debug, Debug_Warning{kind = .Draw_Command_Overflow})
+		return false
+	}
+
+	buffer.commands[buffer.count] = command
+	buffer.count += 1
+	return true
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-box
+draw_box :: proc(buffer: ^Draw_Buffer, rect: Cell_Rect, fill, line: Color) -> bool {
+	return draw_push(buffer, Draw_Command{
+		kind = .Box,
+		box = Draw_Box_Command{rect = rect_px(rect), fill = fill, line = line},
+	})
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-text
+draw_text :: proc(buffer: ^Draw_Buffer, rect: Cell_Rect, text: string, color: Color) -> bool {
+	return draw_push(buffer, Draw_Command{
+		kind = .Text,
+		text = Draw_Text_Command{rect = rect_px(rect), text = text, color = color},
+	})
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-bar
+draw_bar :: proc(buffer: ^Draw_Buffer, rect: Cell_Rect, fill_width_px: int, color, empty, line: Color) -> bool {
+	px := rect_px(rect)
+	fill_px := px
+	fill_px.w = int_clamp(fill_width_px, 0, px.w)
+
+	return draw_push(buffer, Draw_Command{
+		kind = .Bar,
+		bar = Draw_Bar_Command{rect = px, fill = fill_px, empty = empty, color = color, line = line},
+	})
+}
+#+end_src
+
 * Tests
 
 #+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-package
@@ -371,5 +568,70 @@ test_ui_begin_frame_clears_press_origin_after_release_frame :: proc(t: ^testing.
 
 	ui_begin_frame(&state, test_mouse_input(9, 17, left = false))
 	testing.expect_value(t, state.pressed_id[mouse_button_index(.Left)], UI_ID_NONE)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-draw-box
+@(test)
+test_draw_box_pushes_pixel_command :: proc(t: ^testing.T) {
+	storage: [1]Draw_Command
+	buffer := Draw_Buffer{commands = storage[:]}
+	fill := Color{r = 1, g = 2, b = 3, a = 4}
+	line := Color{r = 5, g = 6, b = 7, a = 8}
+
+	testing.expect(t, draw_box(&buffer, cell_rect(1, 2, 3, 4), fill, line))
+	testing.expect_value(t, buffer.count, 1)
+	testing.expect_value(t, buffer.commands[0].kind, Draw_Command_Kind.Box)
+	testing.expect_value(t, buffer.commands[0].box.rect, Pixel_Rect{x = 8, y = 32, w = 24, h = 64})
+	testing.expect_value(t, buffer.commands[0].box.fill, fill)
+	testing.expect_value(t, buffer.commands[0].box.line, line)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-draw-text
+@(test)
+test_draw_text_pushes_text_command :: proc(t: ^testing.T) {
+	storage: [1]Draw_Command
+	buffer := Draw_Buffer{commands = storage[:]}
+	color := Color{r = 10, g = 11, b = 12, a = 13}
+
+	testing.expect(t, draw_text(&buffer, cell_rect(0, 1, 4, 1), "ok", color))
+	testing.expect_value(t, buffer.commands[0].kind, Draw_Command_Kind.Text)
+	testing.expect_value(t, buffer.commands[0].text.rect, Pixel_Rect{x = 0, y = 16, w = 32, h = 16})
+	testing.expect_value(t, buffer.commands[0].text.text, "ok")
+	testing.expect_value(t, buffer.commands[0].text.color, color)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-draw-bar
+@(test)
+test_draw_bar_clamps_fill_width :: proc(t: ^testing.T) {
+	storage: [2]Draw_Command
+	buffer := Draw_Buffer{commands = storage[:]}
+	color := Color{r = 1, g = 1, b = 1, a = 255}
+
+	testing.expect(t, draw_bar(&buffer, cell_rect(0, 0, 2, 1), 99, color, color, color))
+	testing.expect_value(t, buffer.commands[0].bar.fill, Pixel_Rect{x = 0, y = 0, w = 16, h = 16})
+
+	testing.expect(t, draw_bar(&buffer, cell_rect(0, 0, 2, 1), -1, color, color, color))
+	testing.expect_value(t, buffer.commands[1].bar.fill, Pixel_Rect{x = 0, y = 0, w = 0, h = 16})
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-draw-overflow
+@(test)
+test_draw_buffer_overflow_records_debug_warning :: proc(t: ^testing.T) {
+	command_storage: [1]Draw_Command
+	warning_storage: [1]Debug_Warning
+	debug := Debug_Buffer{warnings = warning_storage[:]}
+	buffer := Draw_Buffer{commands = command_storage[:], debug = &debug}
+	color := Color{a = 255}
+
+	testing.expect(t, draw_box(&buffer, cell_rect(0, 0, 1, 1), color, color))
+	testing.expect(t, !draw_box(&buffer, cell_rect(1, 0, 1, 1), color, color))
+	testing.expect_value(t, buffer.count, 1)
+	testing.expect_value(t, buffer.overflow_count, 1)
+	testing.expect_value(t, debug.count, 1)
+	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Draw_Command_Overflow)
 }
 #+end_src

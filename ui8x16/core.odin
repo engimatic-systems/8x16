@@ -29,6 +29,40 @@ Color :: struct {
 }
 // END org:block color
 
+// BEGIN org:block ui-style
+UI_Style :: struct {
+	text: Color,
+	line: Color,
+	panel: Color,
+
+	button_fill:        Color,
+	button_text:        Color,
+	button_active_fill: Color,
+	button_active_text: Color,
+
+	bar_fill:  Color,
+	bar_empty: Color,
+}
+// END org:block ui-style
+
+// BEGIN org:block default-style
+default_style :: proc() -> UI_Style {
+	return UI_Style{
+		text = Color{r = 230, g = 230, b = 230, a = 255},
+		line = Color{r = 80, g = 80, b = 80, a = 255},
+		panel = Color{r = 24, g = 24, b = 24, a = 255},
+
+		button_fill = Color{r = 48, g = 48, b = 48, a = 255},
+		button_text = Color{r = 235, g = 235, b = 235, a = 255},
+		button_active_fill = Color{r = 220, g = 220, b = 220, a = 255},
+		button_active_text = Color{r = 16, g = 16, b = 16, a = 255},
+
+		bar_fill = Color{r = 96, g = 180, b = 120, a = 255},
+		bar_empty = Color{r = 44, g = 44, b = 44, a = 255},
+	}
+}
+// END org:block default-style
+
 // BEGIN org:block ui-id
 UI_ID :: distinct u64
 // END org:block ui-id
@@ -155,3 +189,157 @@ contains :: proc(rect: Cell_Rect, x, y: int) -> bool {
 	       y < px.y + px.h
 }
 // END org:block contains
+
+// BEGIN org:block draw-command-kind
+Draw_Command_Kind :: enum {
+	Box,
+	Text,
+	Bar,
+}
+// END org:block draw-command-kind
+
+// BEGIN org:block draw-box-command
+Draw_Box_Command :: struct {
+	rect: Pixel_Rect,
+	fill: Color,
+	line: Color,
+}
+// END org:block draw-box-command
+
+// BEGIN org:block draw-text-command
+Draw_Text_Command :: struct {
+	rect:  Pixel_Rect,
+	text:  string,
+	color: Color,
+}
+// END org:block draw-text-command
+
+// BEGIN org:block draw-bar-command
+Draw_Bar_Command :: struct {
+	rect:  Pixel_Rect,
+	fill:  Pixel_Rect,
+	empty: Color,
+	color: Color,
+	line:  Color,
+}
+// END org:block draw-bar-command
+
+// BEGIN org:block draw-command
+Draw_Command :: struct {
+	kind: Draw_Command_Kind,
+	box:  Draw_Box_Command,
+	text: Draw_Text_Command,
+	bar:  Draw_Bar_Command,
+}
+// END org:block draw-command
+
+// BEGIN org:block debug-warning-kind
+Debug_Warning_Kind :: enum {
+	Draw_Command_Overflow,
+	Text_Overflow,
+}
+// END org:block debug-warning-kind
+
+// BEGIN org:block debug-warning
+Debug_Warning :: struct {
+	kind: Debug_Warning_Kind,
+	id:   UI_ID,
+	rect: Cell_Rect,
+
+	text:            string,
+	measured_width:  int,
+	available_width: int,
+}
+// END org:block debug-warning
+
+// BEGIN org:block debug-buffer
+Debug_Buffer :: struct {
+	warnings: []Debug_Warning,
+	count:    int,
+
+	overflowed: bool,
+}
+// END org:block debug-buffer
+
+// BEGIN org:block draw-buffer
+Draw_Buffer :: struct {
+	commands: []Draw_Command,
+	count:    int,
+
+	overflow_count: int,
+	debug:          ^Debug_Buffer,
+}
+// END org:block draw-buffer
+
+// BEGIN org:block int-clamp
+int_clamp :: proc(value, low, high: int) -> int {
+	if value < low {
+		return low
+	}
+	if value > high {
+		return high
+	}
+	return value
+}
+// END org:block int-clamp
+
+// BEGIN org:block debug-push
+debug_push :: proc(buffer: ^Debug_Buffer, warning: Debug_Warning) -> bool {
+	if buffer == nil {
+		return false
+	}
+	if buffer.count >= len(buffer.warnings) {
+		buffer.overflowed = true
+		return false
+	}
+
+	buffer.warnings[buffer.count] = warning
+	buffer.count += 1
+	return true
+}
+// END org:block debug-push
+
+// BEGIN org:block draw-push
+draw_push :: proc(buffer: ^Draw_Buffer, command: Draw_Command) -> bool {
+	if buffer.count >= len(buffer.commands) {
+		buffer.overflow_count += 1
+		debug_push(buffer.debug, Debug_Warning{kind = .Draw_Command_Overflow})
+		return false
+	}
+
+	buffer.commands[buffer.count] = command
+	buffer.count += 1
+	return true
+}
+// END org:block draw-push
+
+// BEGIN org:block draw-box
+draw_box :: proc(buffer: ^Draw_Buffer, rect: Cell_Rect, fill, line: Color) -> bool {
+	return draw_push(buffer, Draw_Command{
+		kind = .Box,
+		box = Draw_Box_Command{rect = rect_px(rect), fill = fill, line = line},
+	})
+}
+// END org:block draw-box
+
+// BEGIN org:block draw-text
+draw_text :: proc(buffer: ^Draw_Buffer, rect: Cell_Rect, text: string, color: Color) -> bool {
+	return draw_push(buffer, Draw_Command{
+		kind = .Text,
+		text = Draw_Text_Command{rect = rect_px(rect), text = text, color = color},
+	})
+}
+// END org:block draw-text
+
+// BEGIN org:block draw-bar
+draw_bar :: proc(buffer: ^Draw_Buffer, rect: Cell_Rect, fill_width_px: int, color, empty, line: Color) -> bool {
+	px := rect_px(rect)
+	fill_px := px
+	fill_px.w = int_clamp(fill_width_px, 0, px.w)
+
+	return draw_push(buffer, Draw_Command{
+		kind = .Bar,
+		bar = Draw_Bar_Command{rect = px, fill = fill_px, empty = empty, color = color, line = line},
+	})
+}
+// END org:block draw-bar
