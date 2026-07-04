@@ -2,9 +2,9 @@
 
 ** Source Directive
 
-This project uses a single literate Org source file as the canonical implementation surface once code begins.
+This project uses a single literate Org source file =8x16.org= as the canonical implementation surface once code begins.
 
-- Edit the =.org= source, not tangled Odin output.
+- Edit the =8x16.org= source, not tangled Odin output.
 - Tangle generated Odin files into the repo and commit them.
 - Mark generated files with "edit the org source".
 - Wrap each tangled block with =BEGIN org:block <name>= and =END org:block <name>= comments.
@@ -12,6 +12,10 @@ This project uses a single literate Org source file as the canonical implementat
 - Use block markers to map compiler diagnostics in tangled files back to the org source.
 - Do not build reverse-formatting or formatter-sync tooling unless Odin formatter support appears and the need becomes concrete.
 
+** Merge directive
+
+DO NOT merge PRs. The PR train is intended to support human operator review.
+  
 ** PR 1: Spec And Skeleton
 
 Goal: establish the repo, package boundary, and non-raylib data model.
