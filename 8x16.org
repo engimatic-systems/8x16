@@ -1313,3 +1313,157 @@ test_smoke_commands_emit_primitives :: proc(t: ^testing.T) {
 	testing.expect(t, text_ok)
 }
 #+end_src
+
+* Example Workbenches
+
+Examples are small callable surfaces. They pressure-test control ergonomics
+without owning app state.
+
+#+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name examples-package
+package ui8x16
+#+end_src
+
+#+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-toolbar
+example_toolbar_surface :: proc(ui: ^UI, snap_active: bool) -> (run_activated, snap_activated: bool) {
+	ui_panel(ui, UI_ID(100), cell_rect(0, 0, 24, 3))
+	ui_text(ui, UI_ID(101), cell_rect(1, 0, 8, 1), "tools", ui.style.text)
+	run_activated = ui_button(ui, UI_ID(102), cell_rect(1, 1, 8, 1), "run")
+	snap_activated = ui_toggle(ui, UI_ID(103), cell_rect(10, 1, 10, 1), "snap", snap_active)
+	return
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-status
+example_status_surface :: proc(ui: ^UI, progress, max_progress: int) {
+	ui_panel(ui, UI_ID(200), cell_rect(0, 0, 32, 4))
+	ui_text(ui, UI_ID(201), cell_rect(1, 0, 12, 1), "status", ui.style.text)
+	ui_bar(ui, UI_ID(202), cell_rect(1, 2, 30, 1), progress, max_progress, ui.style.bar_fill)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-dense-result
+Dense_Control_Result :: struct {
+	run:      bool,
+	material: bool,
+	heat:     bool,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-dense-panel
+example_dense_control_panel :: proc(ui: ^UI, material_active, heat_active: bool, progress, max_progress: int) -> Dense_Control_Result {
+	result: Dense_Control_Result
+
+	ui_panel(ui, UI_ID(300), cell_rect(0, 0, 32, 8))
+	ui_text(ui, UI_ID(301), cell_rect(1, 0, 18, 1), "control panel", ui.style.text)
+	result.run = ui_button(ui, UI_ID(302), cell_rect(1, 2, 8, 1), "run")
+	result.material = ui_toggle(ui, UI_ID(303), cell_rect(10, 2, 10, 1), "material", material_active)
+	result.heat = ui_toggle(ui, UI_ID(304), cell_rect(21, 2, 8, 1), "heat", heat_active)
+	ui_bar(ui, UI_ID(305), cell_rect(1, 4, 30, 1), progress, max_progress, ui.style.bar_fill)
+	ui_text(ui, UI_ID(306), cell_rect(1, 6, 22, 1), "cells use 8x16 grid", ui.style.text)
+
+	return result
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-example-toolbar
+@(test)
+test_example_toolbar_surface_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [16]Draw_Command
+	warning_storage: [4]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	run, snap := example_toolbar_surface(&ui, true)
+	commands := ui_end(&draw)
+
+	testing.expect(t, !run)
+	testing.expect(t, !snap)
+	testing.expect_value(t, len(commands), 9)
+	testing.expect_value(t, commands[0].kind, Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, commands[1].kind, Draw_Command_Kind.Stroke_Rect)
+	testing.expect_value(t, commands[2].kind, Draw_Command_Kind.Text)
+	testing.expect_value(t, commands[5].text.text, "run")
+	testing.expect_value(t, commands[8].text.text, "snap")
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-example-status
+@(test)
+test_example_status_surface_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [8]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	example_status_surface(&ui, 5, 10)
+	commands := ui_end(&draw)
+
+	testing.expect_value(t, len(commands), 6)
+	testing.expect_value(t, commands[0].kind, Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, commands[2].kind, Draw_Command_Kind.Text)
+	testing.expect_value(t, commands[2].text.text, "status")
+	testing.expect_value(t, commands[4].fill_rect.rect.w, 120)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-example-dense-panel
+@(test)
+test_example_dense_control_panel_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [24]Draw_Command
+	warning_storage: [4]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	result := example_dense_control_panel(&ui, true, false, 3, 6)
+	commands := ui_end(&draw)
+
+	testing.expect(t, !result.run)
+	testing.expect(t, !result.material)
+	testing.expect(t, !result.heat)
+	testing.expect_value(t, len(commands), 16)
+	testing.expect_value(t, commands[2].text.text, "control panel")
+	testing.expect_value(t, commands[5].text.text, "run")
+	testing.expect_value(t, commands[8].text.text, "material")
+	testing.expect_value(t, commands[11].text.text, "heat")
+	testing.expect_value(t, commands[13].fill_rect.rect.w, 120)
+	testing.expect_value(t, commands[15].text.text, "cells use 8x16 grid")
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-workbench-smoke
+workbench_smoke_commands :: proc(command_storage: []ui.Draw_Command, warning_storage: []ui.Debug_Warning) -> []ui.Draw_Command {
+	state: ui.UI_State
+	debug := ui.Debug_Buffer{warnings = warning_storage}
+	draw := ui.draw_buffer(command_storage)
+	frame := ui.ui_context(&state, &draw, &debug)
+	ui.ui_begin_frame(&state, ui.Mouse_Input{})
+
+	ui.example_dense_control_panel(&frame, true, false, 4, 8)
+	return ui.ui_end(&draw)
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-workbench-smoke-test
+@(test)
+test_workbench_smoke_commands_emit_dense_panel :: proc(t: ^testing.T) {
+	command_storage: [24]ui.Draw_Command
+	warning_storage: [4]ui.Debug_Warning
+	commands := workbench_smoke_commands(command_storage[:], warning_storage[:])
+
+	testing.expect_value(t, len(commands), 16)
+	testing.expect_value(t, commands[0].kind, ui.Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, commands[15].kind, ui.Draw_Command_Kind.Text)
+}
+#+end_src

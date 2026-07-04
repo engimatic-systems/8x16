@@ -449,3 +449,80 @@ test_ui_toggle_active_state_resolves_style_to_primitive_fill :: proc(t: ^testing
 	expect_text_kind(t, draw.commands[2])
 }
 // END org:block test-ui-toggle
+
+// BEGIN org:block test-example-toolbar
+@(test)
+test_example_toolbar_surface_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [16]Draw_Command
+	warning_storage: [4]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	run, snap := example_toolbar_surface(&ui, true)
+	commands := ui_end(&draw)
+
+	testing.expect(t, !run)
+	testing.expect(t, !snap)
+	testing.expect_value(t, len(commands), 9)
+	testing.expect_value(t, commands[0].kind, Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, commands[1].kind, Draw_Command_Kind.Stroke_Rect)
+	testing.expect_value(t, commands[2].kind, Draw_Command_Kind.Text)
+	testing.expect_value(t, commands[5].text.text, "run")
+	testing.expect_value(t, commands[8].text.text, "snap")
+}
+// END org:block test-example-toolbar
+
+// BEGIN org:block test-example-status
+@(test)
+test_example_status_surface_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [8]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	example_status_surface(&ui, 5, 10)
+	commands := ui_end(&draw)
+
+	testing.expect_value(t, len(commands), 6)
+	testing.expect_value(t, commands[0].kind, Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, commands[2].kind, Draw_Command_Kind.Text)
+	testing.expect_value(t, commands[2].text.text, "status")
+	testing.expect_value(t, commands[4].fill_rect.rect.w, 120)
+}
+// END org:block test-example-status
+
+// BEGIN org:block test-example-dense-panel
+@(test)
+test_example_dense_control_panel_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [24]Draw_Command
+	warning_storage: [4]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	result := example_dense_control_panel(&ui, true, false, 3, 6)
+	commands := ui_end(&draw)
+
+	testing.expect(t, !result.run)
+	testing.expect(t, !result.material)
+	testing.expect(t, !result.heat)
+	testing.expect_value(t, len(commands), 16)
+	testing.expect_value(t, commands[2].text.text, "control panel")
+	testing.expect_value(t, commands[5].text.text, "run")
+	testing.expect_value(t, commands[8].text.text, "material")
+	testing.expect_value(t, commands[11].text.text, "heat")
+	testing.expect_value(t, commands[13].fill_rect.rect.w, 120)
+	testing.expect_value(t, commands[15].text.text, "cells use 8x16 grid")
+}
+// END org:block test-example-dense-panel
