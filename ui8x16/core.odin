@@ -33,6 +33,94 @@ Color :: struct {
 UI_ID :: distinct u64
 // END org:block ui-id
 
+// BEGIN org:block ui-id-none
+UI_ID_NONE :: UI_ID(0)
+// END org:block ui-id-none
+
+// BEGIN org:block mouse-button
+Mouse_Button :: enum {
+	Left,
+	Middle,
+	Right,
+}
+// END org:block mouse-button
+
+// BEGIN org:block mouse-button-count
+MOUSE_BUTTON_COUNT :: 3
+// END org:block mouse-button-count
+
+// BEGIN org:block mouse-input
+Mouse_Input :: struct {
+	x, y: int,
+	down: [MOUSE_BUTTON_COUNT]bool,
+}
+// END org:block mouse-input
+
+// BEGIN org:block ui-state
+UI_State :: struct {
+	mouse:         Mouse_Input,
+	previous_down: [MOUSE_BUTTON_COUNT]bool,
+
+	pressed_id: [MOUSE_BUTTON_COUNT]UI_ID,
+
+	hit_any:       bool,
+	activated_any: bool,
+}
+// END org:block ui-state
+
+// BEGIN org:block mouse-button-index
+mouse_button_index :: proc(button: Mouse_Button) -> int {
+	return int(button)
+}
+// END org:block mouse-button-index
+
+// BEGIN org:block ui-begin-frame
+ui_begin_frame :: proc(state: ^UI_State, input: Mouse_Input) {
+	for i in 0..<MOUSE_BUTTON_COUNT {
+		if state.previous_down[i] && !state.mouse.down[i] {
+			state.pressed_id[i] = UI_ID_NONE
+		}
+
+		state.previous_down[i] = state.mouse.down[i]
+	}
+
+	state.mouse = input
+	state.hit_any = false
+	state.activated_any = false
+}
+// END org:block ui-begin-frame
+
+// BEGIN org:block ui-hit
+ui_hit :: proc(state: ^UI_State, rect: Cell_Rect) -> bool {
+	hit := contains(rect, state.mouse.x, state.mouse.y)
+	if hit {
+		state.hit_any = true
+	}
+	return hit
+}
+// END org:block ui-hit
+
+// BEGIN org:block ui-activate
+ui_activate :: proc(state: ^UI_State, id: UI_ID, rect: Cell_Rect, button: Mouse_Button = .Left) -> bool {
+	index := mouse_button_index(button)
+	hit := ui_hit(state, rect)
+	pressed := !state.previous_down[index] && state.mouse.down[index]
+	released := state.previous_down[index] && !state.mouse.down[index]
+
+	if pressed && hit {
+		state.pressed_id[index] = id
+	}
+
+	activated := released &&
+	             hit &&
+	             state.pressed_id[index] == id
+	if activated {
+		state.activated_any = true
+	}
+	return activated
+}
+// END org:block ui-activate
+
 // BEGIN org:block cell-rect-proc
 cell_rect :: proc(col, row, w, h: int) -> Cell_Rect {
 	assert(w > 0, "Cell_Rect width must be positive")

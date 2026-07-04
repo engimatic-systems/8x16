@@ -62,3 +62,93 @@ test_cell_rect_rejects_non_positive_height :: proc(t: ^testing.T) {
 	_ = cell_rect(0, 0, 1, 0)
 }
 // END org:block test-invalid-height
+
+// BEGIN org:block test-mouse-input-helper
+test_mouse_input :: proc(x, y: int, left := false, middle := false, right := false) -> Mouse_Input {
+	return Mouse_Input{x = x, y = y, down = [MOUSE_BUTTON_COUNT]bool{left, middle, right}}
+}
+// END org:block test-mouse-input-helper
+
+// BEGIN org:block test-ui-hit
+@(test)
+test_ui_hit_sets_hit_any :: proc(t: ^testing.T) {
+	state: UI_State
+	rect := cell_rect(1, 1, 2, 2)
+
+	ui_begin_frame(&state, test_mouse_input(8, 16))
+	testing.expect(t, ui_hit(&state, rect))
+	testing.expect(t, state.hit_any)
+	testing.expect(t, !state.activated_any)
+}
+// END org:block test-ui-hit
+
+// BEGIN org:block test-activation-release-inside
+@(test)
+test_ui_activate_requires_press_and_release_inside_same_control :: proc(t: ^testing.T) {
+	state: UI_State
+	rect := cell_rect(1, 1, 2, 2)
+	id := UI_ID(10)
+
+	ui_begin_frame(&state, test_mouse_input(8, 16, left = true))
+	testing.expect(t, !ui_activate(&state, id, rect))
+	testing.expect(t, state.hit_any)
+
+	ui_begin_frame(&state, test_mouse_input(9, 17, left = false))
+	testing.expect(t, ui_activate(&state, id, rect))
+	testing.expect(t, state.activated_any)
+}
+// END org:block test-activation-release-inside
+
+// BEGIN org:block test-activation-release-other
+@(test)
+test_ui_activate_rejects_release_inside_different_control :: proc(t: ^testing.T) {
+	state: UI_State
+	a := cell_rect(1, 1, 2, 2)
+	b := cell_rect(4, 1, 2, 2)
+
+	ui_begin_frame(&state, test_mouse_input(8, 16, left = true))
+	testing.expect(t, !ui_activate(&state, UI_ID(1), a))
+	testing.expect(t, !ui_activate(&state, UI_ID(2), b))
+
+	ui_begin_frame(&state, test_mouse_input(32, 16, left = false))
+	testing.expect(t, !ui_activate(&state, UI_ID(2), b))
+	testing.expect(t, !ui_activate(&state, UI_ID(1), a))
+	testing.expect(t, !state.activated_any)
+}
+// END org:block test-activation-release-other
+
+// BEGIN org:block test-activation-return
+@(test)
+test_ui_activate_allows_leave_return_release :: proc(t: ^testing.T) {
+	state: UI_State
+	rect := cell_rect(1, 1, 2, 2)
+	id := UI_ID(20)
+
+	ui_begin_frame(&state, test_mouse_input(8, 16, left = true))
+	testing.expect(t, !ui_activate(&state, id, rect))
+
+	ui_begin_frame(&state, test_mouse_input(80, 80, left = true))
+	testing.expect(t, !ui_activate(&state, id, rect))
+
+	ui_begin_frame(&state, test_mouse_input(9, 17, left = false))
+	testing.expect(t, ui_activate(&state, id, rect))
+}
+// END org:block test-activation-return
+
+// BEGIN org:block test-activation-clear-next-frame
+@(test)
+test_ui_begin_frame_clears_press_origin_after_release_frame :: proc(t: ^testing.T) {
+	state: UI_State
+	rect := cell_rect(1, 1, 2, 2)
+	id := UI_ID(30)
+
+	ui_begin_frame(&state, test_mouse_input(8, 16, left = true))
+	testing.expect(t, !ui_activate(&state, id, rect))
+
+	ui_begin_frame(&state, test_mouse_input(9, 17, left = false))
+	testing.expect(t, ui_activate(&state, id, rect))
+
+	ui_begin_frame(&state, test_mouse_input(9, 17, left = false))
+	testing.expect_value(t, state.pressed_id[mouse_button_index(.Left)], UI_ID_NONE)
+}
+// END org:block test-activation-clear-next-frame
