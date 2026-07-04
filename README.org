@@ -4,4 +4,6 @@ Small immediate-mode UI package for Odin workbenches.
 
 The design kernel is fixed 8x16 cell geometry: layout is expressed in integer cells, while drawing backends translate those cells to pixels. The initial target is boring, predictable UI for small tools: boxes, labels, buttons, toggles, bars, hitboxes, and debug warnings for text overflow.
 
+The canonical implementation source is [[file:8x16.org][8x16.org]]. Generated Odin package files live under [[file:ui8x16][ui8x16]] and should be regenerated from the Org source.
+
 See [[file:SPEC.org][SPEC.org]] for the current v0 contract and [[file:PLAN.org][PLAN.org]] for staged work.

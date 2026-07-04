@@ -1,0 +1,59 @@
+* 8x16 Literate Source
+
+This file is the canonical implementation surface for the Odin package.
+Edit this file first, then tangle generated Odin files into the repo.
+
+Generated Odin files include block markers so compiler diagnostics can be
+mapped back to this source.
+
+* Package =ui8x16=
+
+The package boundary is intentionally small in PR 1: public value types only,
+with no drawing backend dependency.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name package
+package ui8x16
+#+end_src
+
+** Cell Rectangles
+
+=Cell_Rect= stores absolute UI-space geometry in fixed 8x16 cells.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name cell-rect
+Cell_Rect :: struct {
+	col, row: int,
+	w, h:    int,
+}
+#+end_src
+
+** Pixel Rectangles
+
+=Pixel_Rect= is the backend-facing pixel rectangle type. Backends translate
+cell-space values into this shape before drawing.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name pixel-rect
+Pixel_Rect :: struct {
+	x, y: int,
+	w, h: int,
+}
+#+end_src
+
+** Colors
+
+=Color= is a plain RGBA byte color. Domain-specific color choices remain
+caller-owned.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name color
+Color :: struct {
+	r, g, b, a: u8,
+}
+#+end_src
+
+** UI Identity
+
+=UI_ID= gives controls a caller-owned stable identity without imposing labels,
+strings, or backend handles on the package.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-id
+UI_ID :: distinct u64
+#+end_src
