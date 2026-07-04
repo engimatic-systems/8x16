@@ -63,18 +63,28 @@ Review question: does interaction state stay minimal and caller-owned?
 
 Goal: keep package independent of raylib while still useful to raylib callers.
 
+This PR supersedes the earlier =pr4-drawing-command-layer= and =pr5-controls-and-examples= branches. Treat those branches as implementation reference only, not as base branches.
+
 Deliverables:
 
-- draw command structs for box, text, bar
-- caller-owned command buffer or callback shape
+- primitive draw command structs only: =Fill_Rect=, =Stroke_Rect=, =Text=
+- =Pixel_Point= for text origin
+- text command uses pixel origin, not =Pixel_Rect=
+- no =Bar= draw command; bars compile to rectangle commands
+- no semantic =Box=, =Button=, =Toggle=, or =Panel= draw commands
+- caller-owned or UI-owned fixed command buffer
+- =ui_end= returns ordered command slice
 - minimal =UI_Style=
-- debug overflow warnings
+- text overflow warning before command emission
+- loud command-buffer overflow behavior
 
-Review question: is the drawing abstraction thin enough to translate directly to raylib?
+Review question: does the draw layer expose only primitive rendering facts, with UI semantics resolved before commands reach a backend?
 
 ** PR 5: Controls And Examples
 
 Goal: build the first useful controls and example UIs.
+
+This PR should be rebuilt on top of the replacement PR 4.
 
 Deliverables:
 
@@ -85,8 +95,23 @@ Deliverables:
 - =ui_button=
 - =ui_toggle=
 - at least two small example surfaces
+- snapshot command-list tests for examples
 
 Review question: do the examples reveal a pleasant API without adding speculative layout helpers?
+
+** Later: Raylib Backend
+
+Goal: prove that the command buffer is enough for a concrete renderer without adding raylib to core.
+
+Deliverables:
+
+- separate backend package, likely =raylib_8x16=
+- font loading and backend font handle ownership
+- texture filter setup
+- renderer for =Fill_Rect=, =Stroke_Rect=, and =Text=
+- backend smoke example
+
+Review question: can raylib render the command buffer without needing UI semantics, style resolution, clipping decisions, or input routing?
 
 ** Later: Auto Integration
 

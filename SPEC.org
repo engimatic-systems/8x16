@@ -24,6 +24,7 @@ The package may expose plain structs that are easy for a raylib caller to transl
 
 #+begin_src odin
 Color :: struct { r, g, b, a: u8 }
+Pixel_Point :: struct { x, y: int }
 Pixel_Rect :: struct { x, y, w, h: int }
 #+end_src
 
@@ -144,6 +145,70 @@ UI_Style :: struct {
 
 Caller can configure once. Material colors, automata colors, heat colors, and other domain colors stay outside.
 
+** Rendering Contract
+
+The draw layer turns UI semantics into an ordered command buffer.
+
+#+begin_example
+UI semantics -> command compiler -> ordered draw command buffer -> backend renderer
+#+end_example
+
+Layer ownership:
+
+- UI layer expresses intent: text, boxes, panels, bars, buttons, toggles.
+- Command compiler resolves style to raw RGBA, converts cells to pixels, measures text overflow, and emits primitive draw commands.
+- Backend renderer draws the ordered command buffer and owns no UI semantics.
+
+V0 draw commands are primitive-only:
+
+#+begin_src odin
+Draw_Command_Kind :: enum {
+    Fill_Rect,
+    Stroke_Rect,
+    Text,
+}
+
+Draw_Rect_Command :: struct {
+    rect:  Pixel_Rect,
+    color: Color,
+}
+
+Draw_Text_Command :: struct {
+    pos:   Pixel_Point,
+    text:  string,
+    color: Color,
+    scale: int, // 1..4
+}
+#+end_src
+
+Rules:
+
+- Commands are append-only and render in buffer order.
+- No z coordinate in v0.
+- Commands are plain data.
+- Bars compile to rectangle commands; =Bar= is not a draw command.
+- Buttons, toggles, boxes, and panels compile to primitive rectangle/text commands.
+- Text commands carry a pixel origin, not a bounding rect.
+- Text bounds and overflow warnings belong to the compiler/debug path before command emission.
+- Backend trusts commands and performs no clipping.
+
+Command buffer:
+
+- Caller-owned or UI-owned fixed storage is acceptable for v0.
+- =ui_end= should return a slice of ordered commands.
+- Buffer overflow must fail loudly: panic, hard failure, or debug warning plus failed push. Silent drop is not acceptable.
+
+Backend renderer:
+
+- Draws =Fill_Rect=, =Stroke_Rect=, and =Text=.
+- May own font loading, backend font handles, texture filtering, and backend-specific draw calls.
+- Must not own button activation, hover logic, style resolution, text overflow decisions, clipping policy, keyboard routing, or mouse routing.
+
+Font scale:
+
+- Support integer text scale =1|2|3|4=.
+- With the fixed 8x16 design kernel: scale 1 = 8x16, scale 2 = 16x32, scale 3 = 24x48, scale 4 = 32x64.
+
 ** Text
 
 Text takes a rect.
@@ -160,6 +225,7 @@ V0:
 - No clipping.
 - Warn on overflow in debug.
 - Measurement uses configured 8x16 metrics, not raylib.
+- Emitted draw text uses a pixel origin; the rect is for layout, hit area, and overflow checking.
 
 ** Padding
 
@@ -196,6 +262,8 @@ Warnings should dedupe by ID.
 - No z-order system.
 - No global event capture.
 - No canvas abstraction inside UI package.
+- No semantic draw commands such as =Bar= or =Button=.
+- No renderer backend logic in the core package.
 
 ** Work Sequence
 
