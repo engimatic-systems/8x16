@@ -468,11 +468,11 @@ test_example_toolbar_surface_command_snapshot :: proc(t: ^testing.T) {
 	testing.expect(t, !run)
 	testing.expect(t, !snap)
 	testing.expect_value(t, len(commands), 9)
-	testing.expect_value(t, commands[0].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, commands[1].kind, Draw_Command_Kind.Stroke_Rect)
-	testing.expect_value(t, commands[2].kind, Draw_Command_Kind.Text)
-	testing.expect_value(t, commands[5].text.text, "run")
-	testing.expect_value(t, commands[8].text.text, "snap")
+	expect_fill_rect_kind(t, commands[0])
+	expect_stroke_rect_kind(t, commands[1])
+	expect_text_kind(t, commands[2])
+	expect_text_value(t, commands[5], "run")
+	expect_text_value(t, commands[8], "snap")
 }
 // END org:block test-example-toolbar
 
@@ -492,10 +492,9 @@ test_example_status_surface_command_snapshot :: proc(t: ^testing.T) {
 	commands := ui_end(&draw)
 
 	testing.expect_value(t, len(commands), 6)
-	testing.expect_value(t, commands[0].kind, Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, commands[2].kind, Draw_Command_Kind.Text)
-	testing.expect_value(t, commands[2].text.text, "status")
-	testing.expect_value(t, commands[4].fill_rect.rect.w, 120)
+	expect_fill_rect_kind(t, commands[0])
+	expect_text_value(t, commands[2], "status")
+	expect_fill_rect_width(t, commands[4], 120)
 }
 // END org:block test-example-status
 
@@ -518,11 +517,11 @@ test_example_dense_control_panel_command_snapshot :: proc(t: ^testing.T) {
 	testing.expect(t, !result.material)
 	testing.expect(t, !result.heat)
 	testing.expect_value(t, len(commands), 16)
-	testing.expect_value(t, commands[2].text.text, "control panel")
-	testing.expect_value(t, commands[5].text.text, "run")
-	testing.expect_value(t, commands[8].text.text, "material")
-	testing.expect_value(t, commands[11].text.text, "heat")
-	testing.expect_value(t, commands[13].fill_rect.rect.w, 120)
-	testing.expect_value(t, commands[15].text.text, "cells use 8x16 grid")
+	expect_text_value(t, commands[2], "control panel")
+	expect_text_value(t, commands[5], "run")
+	expect_text_value(t, commands[8], "material")
+	expect_text_value(t, commands[11], "heat")
+	expect_fill_rect_width(t, commands[13], 120)
+	expect_text_value(t, commands[15], "cells use 8x16 grid")
 }
 // END org:block test-example-dense-panel

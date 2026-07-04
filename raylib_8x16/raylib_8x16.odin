@@ -145,7 +145,9 @@ test_workbench_smoke_commands_emit_dense_panel :: proc(t: ^testing.T) {
 	commands := workbench_smoke_commands(command_storage[:], warning_storage[:])
 
 	testing.expect_value(t, len(commands), 16)
-	testing.expect_value(t, commands[0].kind, ui.Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, commands[15].kind, ui.Draw_Command_Kind.Text)
+	_, fill_ok := commands[0].(ui.Fill_Rect_Command)
+	_, text_ok := commands[15].(ui.Text_Command)
+	testing.expect(t, fill_ok)
+	testing.expect(t, text_ok)
 }
 // END org:block raylib-workbench-smoke-test
