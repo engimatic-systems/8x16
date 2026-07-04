@@ -1221,21 +1221,21 @@ text_runes :: proc(renderer: ^Renderer, text: string) -> []rune {
 
 #+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-render-command
 render_command :: proc(renderer: ^Renderer, command: ui.Draw_Command) {
-	switch command.kind {
-	case .Fill_Rect:
-		rl.DrawRectangleRec(raylib_rect(command.fill_rect.rect), raylib_color(command.fill_rect.color))
-	case .Stroke_Rect:
-		rl.DrawRectangleLinesEx(raylib_rect(command.stroke_rect.rect), 1, raylib_color(command.stroke_rect.color))
-	case .Text:
-		runes := text_runes(renderer, command.text.text)
+	switch payload in command {
+	case ui.Fill_Rect_Command:
+		rl.DrawRectangleRec(raylib_rect(payload.rect), raylib_color(payload.color))
+	case ui.Stroke_Rect_Command:
+		rl.DrawRectangleLinesEx(raylib_rect(payload.rect), 1, raylib_color(payload.color))
+	case ui.Text_Command:
+		runes := text_runes(renderer, payload.text)
 		rl.DrawTextCodepoints(
 			renderer.font,
 			raw_data(runes),
 			c.int(len(runes)),
-			raylib_point(command.text.pos),
-			f32(ui.CELL_HEIGHT * command.text.scale),
+			raylib_point(payload.pos),
+			f32(ui.CELL_HEIGHT * payload.scale),
 			renderer.spacing,
-			raylib_color(command.text.color),
+			raylib_color(payload.color),
 		)
 	}
 }
@@ -1270,8 +1270,11 @@ test_smoke_commands_emit_primitives :: proc(t: ^testing.T) {
 	commands := smoke_commands(storage[:])
 
 	testing.expect_value(t, len(commands), 3)
-	testing.expect_value(t, commands[0].kind, ui.Draw_Command_Kind.Fill_Rect)
-	testing.expect_value(t, commands[1].kind, ui.Draw_Command_Kind.Stroke_Rect)
-	testing.expect_value(t, commands[2].kind, ui.Draw_Command_Kind.Text)
+	_, fill_ok := commands[0].(ui.Fill_Rect_Command)
+	_, stroke_ok := commands[1].(ui.Stroke_Rect_Command)
+	_, text_ok := commands[2].(ui.Text_Command)
+	testing.expect(t, fill_ok)
+	testing.expect(t, stroke_ok)
+	testing.expect(t, text_ok)
 }
 #+end_src
