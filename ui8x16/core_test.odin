@@ -286,3 +286,129 @@ test_draw_text_rejects_invalid_scale :: proc(t: ^testing.T) {
 	draw_text(&buffer, Pixel_Point{}, "x", Color{a = 255}, 0)
 }
 // END org:block test-text-scale
+
+// BEGIN org:block test-ui-helper
+test_ui_init :: proc(ui: ^UI, state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer, command_storage: []Draw_Command, warning_storage: []Debug_Warning) {
+	debug^ = Debug_Buffer{warnings = warning_storage}
+	draw^ = draw_buffer(command_storage)
+	ui^ = ui_context(state, draw, debug)
+}
+// END org:block test-ui-helper
+
+// BEGIN org:block test-ui-text
+@(test)
+test_ui_text_emits_primitive_text_and_overflow_warning :: proc(t: ^testing.T) {
+	command_storage: [2]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
+	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
+
+	testing.expect_value(t, draw.count, 2)
+	testing.expect_value(t, draw.commands[0].kind, Draw_Command_Kind.Text)
+	testing.expect_value(t, draw.commands[0].text.pos, Pixel_Point{x = 0, y = 0})
+	testing.expect_value(t, draw.commands[0].text.text, "abc")
+	testing.expect_value(t, debug.count, 1)
+	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Text_Overflow)
+	testing.expect_value(t, debug.warnings[0].measured_width, 24)
+	testing.expect_value(t, debug.warnings[0].available_width, 8)
+}
+// END org:block test-ui-text
+
+// BEGIN org:block test-ui-box
+@(test)
+test_ui_box_compiles_to_fill_then_stroke :: proc(t: ^testing.T) {
+	command_storage: [2]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+
+	fill := Color{r = 1, a = 255}
+	line := Color{r = 2, a = 255}
+	ui_box(&ui, UI_ID(2), cell_rect(1, 1, 2, 1), fill, line)
+
+	testing.expect_value(t, draw.count, 2)
+	testing.expect_value(t, draw.commands[0].kind, Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, draw.commands[1].kind, Draw_Command_Kind.Stroke_Rect)
+	testing.expect_value(t, draw.commands[0].fill_rect.rect, Pixel_Rect{x = 8, y = 16, w = 16, h = 16})
+	testing.expect_value(t, draw.commands[0].fill_rect.color, fill)
+	testing.expect_value(t, draw.commands[1].stroke_rect.color, line)
+}
+// END org:block test-ui-box
+
+// BEGIN org:block test-ui-bar
+@(test)
+test_ui_bar_compiles_to_empty_fill_value_fill_and_stroke :: proc(t: ^testing.T) {
+	command_storage: [3]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+
+	ui_bar(&ui, UI_ID(3), cell_rect(0, 0, 10, 1), 3, 10, ui.style.bar_fill)
+
+	testing.expect_value(t, draw.count, 3)
+	testing.expect_value(t, draw.commands[0].kind, Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, draw.commands[1].kind, Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, draw.commands[2].kind, Draw_Command_Kind.Stroke_Rect)
+	testing.expect_value(t, draw.commands[1].fill_rect.rect, Pixel_Rect{x = 0, y = 0, w = 24, h = 16})
+}
+// END org:block test-ui-bar
+
+// BEGIN org:block test-ui-button
+@(test)
+test_ui_button_returns_activation_and_compiles_primitives :: proc(t: ^testing.T) {
+	command_storage: [8]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	rect := cell_rect(0, 0, 5, 1)
+
+	ui_begin_frame(&state, test_mouse_input(0, 0, left = true))
+	testing.expect(t, !ui_button(&ui, UI_ID(4), rect, "run"))
+
+	ui_begin_frame(&state, test_mouse_input(1, 1, left = false))
+	testing.expect(t, ui_button(&ui, UI_ID(4), rect, "run"))
+
+	commands := ui_end(&draw)
+	testing.expect_value(t, len(commands), 6)
+	testing.expect_value(t, commands[0].kind, Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, commands[1].kind, Draw_Command_Kind.Stroke_Rect)
+	testing.expect_value(t, commands[2].kind, Draw_Command_Kind.Text)
+	testing.expect_value(t, commands[5].text.pos, Pixel_Point{x = 2, y = 0})
+}
+// END org:block test-ui-button
+
+// BEGIN org:block test-ui-toggle
+@(test)
+test_ui_toggle_active_state_resolves_style_to_primitive_fill :: proc(t: ^testing.T) {
+	command_storage: [3]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+
+	ui_toggle(&ui, UI_ID(5), cell_rect(0, 0, 6, 1), "snap", true)
+
+	testing.expect_value(t, draw.count, 3)
+	testing.expect_value(t, draw.commands[0].kind, Draw_Command_Kind.Fill_Rect)
+	testing.expect_value(t, draw.commands[0].fill_rect.color, ui.style.button_active_fill)
+	testing.expect_value(t, draw.commands[2].kind, Draw_Command_Kind.Text)
+}
+// END org:block test-ui-toggle
