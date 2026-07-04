@@ -59,7 +59,42 @@ Font scale:
 Expected train:
 
 1. Replacement PR 4: corrected primitive drawing command layer.
-2. Replacement PR 5: controls and examples rebuilt on that command layer.
-3. Later PR: separate raylib backend package, likely =raylib_8x16=.
+2. PR 5: command compiler, where UI semantics become primitive draw commands.
+3. PR 6: separate raylib backend package, likely =raylib_8x16=.
+4. PR 7: example workbenches and ergonomic pressure tests.
+
+PR 5 owns:
+
+- =UI= frame object or equivalent call surface containing state, style, and command buffer
+- =ui_text=
+- =ui_box=
+- =ui_panel=
+- =ui_bar=
+- =ui_button=
+- =ui_toggle=
+- style resolution to raw =Color= values
+- fixed 8x16 text measurement
+- text overflow warning before command emission
+- snapshot command-list tests
+
+PR 6 owns:
+
+- backend package separate from core
+- raylib font loading
+- backend font handle ownership
+- texture filter setup
+- rendering =Fill_Rect=, =Stroke_Rect=, and =Text=
+- text scale =1|2|3|4=
+- backend smoke example
+
+PR 6 must still keep backend logic narrow. Do not move style resolution, input routing, hover logic, activation, or clipping policy into the backend.
+
+PR 7 owns:
+
+- at least two small example surfaces
+- dense control panel example
+- bars, toggles, buttons, text, panels
+- command snapshot tests where stable
+- raylib visual smoke where useful
 
 Use =SPEC.org= and =PLAN.org= on the integration branch as source of truth.
