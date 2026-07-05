@@ -431,6 +431,7 @@ layout policy, such as text bounds.
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-warning-kind
 Debug_Warning_Kind :: enum {
 	Text_Overflow,
+	Control_Label_Padding_Too_Short,
 }
 #+end_src
 
@@ -498,6 +499,32 @@ debug_text_overflow :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect, t
 }
 #+end_src
 
+=debug_control_label_padding_too_short= records layout misuse without aborting
+the frame. One/half label padding is meaningful only when the control has room
+for half a text cell above and below the label; too-short controls still lower
+deterministically so iteration stays cheap.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-control-label-padding-too-short
+debug_control_label_padding_too_short :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect) -> bool {
+	if buffer == nil {
+		return false
+	}
+
+	for i in 0..<buffer.count {
+		warning := buffer.warnings[i]
+		if warning.kind == .Control_Label_Padding_Too_Short && warning.id == id {
+			return false
+		}
+	}
+
+	return debug_push(buffer, Debug_Warning{
+		kind = .Control_Label_Padding_Too_Short,
+		id = id,
+		rect = rect,
+	})
+}
+#+end_src
+
 =UI= is the per-frame compiler context. It groups output command storage,
 optional debug storage, and resolved style so semantic calls do not need to
 thread those arguments independently. It does not own interaction state. Text
@@ -509,6 +536,40 @@ UI :: struct {
 	draw:  ^Draw_Buffer,
 	debug: ^Debug_Buffer,
 	style: UI_Style,
+}
+#+end_src
+
+=Control_Options= carries stable display policy for button-like controls.
+Transient state, such as whether the caller currently considers the control
+pressed, stays outside this struct.
+
+=One_Half= padding means one text cell of horizontal inset and one half text
+cell of vertical inset. At scale =1= this wants a two-row control: 8 pixels on
+top, 16 pixels for the glyph, and 8 pixels on bottom.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name control-options
+Control_Label_Padding :: enum {
+	None,
+	One_Half,
+}
+
+Control_Options :: struct {
+	scale:         int,
+	label_padding: Control_Label_Padding,
+}
+
+DEFAULT_CONTROL_OPTIONS :: Control_Options{
+	scale = 1,
+	label_padding = .None,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name control-options-scale
+control_options_scale :: proc(options: Control_Options) -> int {
+	if options.scale == 0 {
+		return DEFAULT_CONTROL_OPTIONS.scale
+	}
+	return options.scale
 }
 #+end_src
 
@@ -565,7 +626,11 @@ scales.
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name compile-text
 compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text: string, color: Color, scale: int) {
 	measured_width := text_width_px(text, scale)
-	available_width := rect.w * CELL_WIDTH
+	bounds := rect_px(rect)
+	available_width := bounds.x + bounds.w - pos.x
+	if available_width < 0 {
+		available_width = 0
+	}
 	if measured_width > available_width {
 		debug_text_overflow(ui.debug, id, rect, text, measured_width, available_width)
 	}
@@ -621,14 +686,40 @@ ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill:
 }
 #+end_src
 
+=control_label_origin= lowers label padding policy to a pixel origin. Default
+padding preserves the original compact 2-pixel inset. =One_Half= uses cell
+metrics and scales with the label. If a control is too short, the compiler keeps
+the horizontal one-cell inset, falls back to the compact vertical origin, and
+records a debug warning.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name control-label-origin
+control_label_origin :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, options: Control_Options) -> Pixel_Point {
+	px := rect_px(rect)
+	scale := control_options_scale(options)
+
+	switch options.label_padding {
+	case .One_Half:
+		px.x += CELL_WIDTH * scale
+		required_height := CELL_HEIGHT * scale * 2
+		if px.h < required_height {
+			debug_control_label_padding_too_short(ui.debug, id, rect)
+			return Pixel_Point{x = px.x, y = px.y}
+		}
+		return Pixel_Point{x = px.x, y = px.y + CELL_HEIGHT * scale / 2}
+	case .None:
+		return Pixel_Point{x = px.x + 2, y = px.y}
+	}
+	return Pixel_Point{x = px.x + 2, y = px.y}
+}
+#+end_src
+
 =ui_button= lowers a button visual into fill, stroke, and text primitives.
 Interaction is handled before this call; callers pass =pressed=true= when the
-interaction/query phase says this button is currently held. The label is inset
-by 2 pixels before text compilation. The label scale defaults to =1= but remains
-a per-call value.
+interaction/query phase says this button is currently held. Stable display
+policy, such as label scale and padding, travels through =Control_Options=.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-button
-ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, scale: int = 1, pressed: bool = false) {
+ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, options: Control_Options = DEFAULT_CONTROL_OPTIONS, pressed: bool = false) {
 	fill := ui.style.button_fill
 	text_color := ui.style.button_text
 	if pressed {
@@ -637,21 +728,18 @@ ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, scale: int
 	}
 
 	ui_box(ui, id, rect, fill, ui.style.line)
-	text_rect := rect
-	text_px := rect_px(text_rect)
-	text_px.x += 2
-	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
+	compile_text(ui, id, rect, control_label_origin(ui, id, rect, options), label, text_color, control_options_scale(options))
 }
 #+end_src
 
 =ui_toggle= shares the button shape but takes active state from the caller. It
 does not flip that state. The caller handles activation in the interaction/query
 phase, updates application state, and passes the current =active= value here.
-Like buttons, toggle label scale defaults to =1= and pressed visual state is
-carried per call.
+Like buttons, toggle label scale and padding come from =Control_Options= while
+pressed visual state is carried per call.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-toggle
-ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool, scale: int = 1, pressed: bool = false) {
+ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool, options: Control_Options = DEFAULT_CONTROL_OPTIONS, pressed: bool = false) {
 	fill := ui.style.button_fill
 	text_color := ui.style.button_text
 	if active || pressed {
@@ -660,10 +748,7 @@ ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bo
 	}
 
 	ui_box(ui, id, rect, fill, ui.style.line)
-	text_rect := rect
-	text_px := rect_px(text_rect)
-	text_px.x += 2
-	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
+	compile_text(ui, id, rect, control_label_origin(ui, id, rect, options), label, text_color, control_options_scale(options))
 }
 #+end_src
 
@@ -1101,6 +1186,46 @@ test_ui_button_lowers_from_external_interaction_state :: proc(t: ^testing.T) {
 }
 #+end_src
 
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-button-one-half-padding
+@(test)
+test_ui_button_one_half_padding_uses_cell_metrics :: proc(t: ^testing.T) {
+	command_storage: [3]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	ui_button(&ui, UI_ID(40), cell_rect(0, 0, 8, 2), "run", options = Control_Options{label_padding = .One_Half})
+
+	testing.expect_value(t, draw.count, 3)
+	expect_text(t, draw.commands[2], Pixel_Point{x = 8, y = 8}, "run", ui.style.button_text, 1)
+	testing.expect_value(t, debug.count, 0)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-button-one-half-padding-too-short
+@(test)
+test_ui_button_one_half_padding_warns_on_one_row_control :: proc(t: ^testing.T) {
+	command_storage: [3]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	rect := cell_rect(0, 0, 8, 1)
+	ui_button(&ui, UI_ID(41), rect, "run", options = Control_Options{label_padding = .One_Half})
+
+	testing.expect_value(t, draw.count, 3)
+	expect_text_pos(t, draw.commands[2], Pixel_Point{x = 8, y = 0})
+	testing.expect_value(t, debug.count, 1)
+	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Control_Label_Padding_Too_Short)
+	testing.expect_value(t, debug.warnings[0].id, UI_ID(41))
+	testing.expect_value(t, debug.warnings[0].rect, rect)
+}
+#+end_src
+
 #+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-toggle
 @(test)
 test_ui_toggle_active_state_resolves_style_to_primitive_fill :: proc(t: ^testing.T) {
@@ -1323,6 +1448,18 @@ example_status_surface :: proc(frame: ^ui.UI, progress, max_progress: int) {
 }
 #+end_src
 
+#+begin_src odin :tangle examples/surfaces/surfaces.odin :noweb no :comments no :name example-layout-options
+example_layout_options_surface :: proc(frame: ^ui.UI) {
+	padded := ui.Control_Options{label_padding = .One_Half}
+
+	ui.ui_panel(frame, ui.UI_ID(250), ui.cell_rect(0, 0, 28, 7))
+	ui.ui_text(frame, ui.UI_ID(251), ui.cell_rect(1, 0, 18, 1), "layout options", frame.style.text)
+	ui.ui_button(frame, ui.UI_ID(252), ui.cell_rect(1, 2, 10, 1), "default")
+	ui.ui_button(frame, ui.UI_ID(253), ui.cell_rect(1, 4, 10, 2), "one/half", options = padded)
+	ui.ui_toggle(frame, ui.UI_ID(254), ui.cell_rect(12, 4, 12, 2), "padded", true, options = padded)
+}
+#+end_src
+
 #+begin_src odin :tangle examples/surfaces/surfaces.odin :noweb no :comments no :name example-dense-panel
 example_dense_control_panel :: proc(frame: ^ui.UI, material_active, heat_active: bool, progress, max_progress: int, run_pressed: bool = false, material_pressed: bool = false, heat_pressed: bool = false) {
 	ui.ui_panel(frame, ui.UI_ID(300), ui.cell_rect(0, 0, 32, 8))
@@ -1408,6 +1545,14 @@ expect_text_value :: proc(t: ^testing.T, command: ui.Draw_Command, text: string)
 	}
 }
 
+expect_text_pos :: proc(t: ^testing.T, command: ui.Draw_Command, pos: ui.Pixel_Point) {
+	payload, ok := command.(ui.Text_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.pos, pos)
+	}
+}
+
 expect_fill_rect_width :: proc(t: ^testing.T, command: ui.Draw_Command, width: int) {
 	payload, ok := command.(ui.Fill_Rect_Command)
 	testing.expect(t, ok)
@@ -1462,6 +1607,31 @@ test_example_status_surface_command_snapshot :: proc(t: ^testing.T) {
 	expect_fill_rect_kind(t, commands[0])
 	expect_text_value(t, commands[2], "status")
 	expect_fill_rect_width(t, commands[4], 120)
+}
+#+end_src
+
+#+begin_src odin :tangle examples/surfaces/surfaces_test.odin :noweb no :comments no :name test-example-layout-options
+@(test)
+test_example_layout_options_surface_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [16]ui.Draw_Command
+	warning_storage: [4]ui.Debug_Warning
+	frame: ui.UI
+	draw: ui.Draw_Buffer
+	debug: ui.Debug_Buffer
+	example_test_ui(&frame, &draw, &debug, command_storage[:], warning_storage[:])
+
+	example_layout_options_surface(&frame)
+	commands := ui.ui_end(&draw)
+
+	testing.expect_value(t, len(commands), 12)
+	expect_text_value(t, commands[2], "layout options")
+	expect_text_value(t, commands[5], "default")
+	expect_text_pos(t, commands[5], ui.Pixel_Point{x = 10, y = 32})
+	expect_text_value(t, commands[8], "one/half")
+	expect_text_pos(t, commands[8], ui.Pixel_Point{x = 16, y = 72})
+	expect_text_value(t, commands[11], "padded")
+	expect_text_pos(t, commands[11], ui.Pixel_Point{x = 104, y = 72})
+	testing.expect_value(t, debug.count, 0)
 }
 #+end_src
 
@@ -1533,6 +1703,13 @@ Run it from the repository root:
 
 #+begin_src sh
 odin run examples/drawing_app.odin -file
+#+end_src
+
+The layout options app is static. It exists to show the default compact label
+inset beside =Control_Options{label_padding = .One_Half}= on two-row controls.
+
+#+begin_src sh
+odin run examples/layout_options_app.odin -file
 #+end_src
 
 #+begin_src odin :tangle examples/drawing_app.odin :noweb no :comments no :name example-drawing-app
@@ -1732,6 +1909,46 @@ main :: proc() {
 		rl.BeginDrawing()
 		rl.ClearBackground(rl.Color{12, 12, 14, 255})
 		draw_canvas(&canvas, app.show_grid)
+		rui.render_commands(&renderer, commands)
+		rl.EndDrawing()
+	}
+}
+#+end_src
+
+#+begin_src odin :tangle examples/layout_options_app.odin :noweb no :comments no :name example-layout-options-app
+package main
+
+import rl "vendor:raylib"
+import surf "./surfaces"
+import ui "../ui8x16"
+import rui "../raylib_8x16"
+
+WINDOW_WIDTH :: 224
+WINDOW_HEIGHT :: 112
+
+FONT_PATH :: "assets/fonts/PxPlus_IBM_VGA_8x16.ttf"
+
+main :: proc() {
+	rl.InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "8x16 layout options")
+	defer rl.CloseWindow()
+	rl.SetTargetFPS(60)
+
+	text_runes: [1024]rune
+	renderer := rui.load_renderer(FONT_PATH, text_runes[:])
+	defer rui.unload_renderer(&renderer)
+
+	command_storage: [32]ui.Draw_Command
+	warning_storage: [8]ui.Debug_Warning
+
+	for !rl.WindowShouldClose() {
+		debug := ui.Debug_Buffer{warnings = warning_storage[:]}
+		draw := ui.draw_buffer(command_storage[:])
+		frame := ui.ui_context(&draw, &debug)
+		surf.example_layout_options_surface(&frame)
+		commands := ui.ui_end(&draw)
+
+		rl.BeginDrawing()
+		rl.ClearBackground(rl.Color{12, 12, 14, 255})
 		rui.render_commands(&renderer, commands)
 		rl.EndDrawing()
 	}

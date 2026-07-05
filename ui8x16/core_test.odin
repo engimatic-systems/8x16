@@ -432,6 +432,46 @@ test_ui_button_lowers_from_external_interaction_state :: proc(t: ^testing.T) {
 }
 // END org:block test-ui-button
 
+// BEGIN org:block test-ui-button-one-half-padding
+@(test)
+test_ui_button_one_half_padding_uses_cell_metrics :: proc(t: ^testing.T) {
+	command_storage: [3]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	ui_button(&ui, UI_ID(40), cell_rect(0, 0, 8, 2), "run", options = Control_Options{label_padding = .One_Half})
+
+	testing.expect_value(t, draw.count, 3)
+	expect_text(t, draw.commands[2], Pixel_Point{x = 8, y = 8}, "run", ui.style.button_text, 1)
+	testing.expect_value(t, debug.count, 0)
+}
+// END org:block test-ui-button-one-half-padding
+
+// BEGIN org:block test-ui-button-one-half-padding-too-short
+@(test)
+test_ui_button_one_half_padding_warns_on_one_row_control :: proc(t: ^testing.T) {
+	command_storage: [3]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	rect := cell_rect(0, 0, 8, 1)
+	ui_button(&ui, UI_ID(41), rect, "run", options = Control_Options{label_padding = .One_Half})
+
+	testing.expect_value(t, draw.count, 3)
+	expect_text_pos(t, draw.commands[2], Pixel_Point{x = 8, y = 0})
+	testing.expect_value(t, debug.count, 1)
+	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Control_Label_Padding_Too_Short)
+	testing.expect_value(t, debug.warnings[0].id, UI_ID(41))
+	testing.expect_value(t, debug.warnings[0].rect, rect)
+}
+// END org:block test-ui-button-one-half-padding-too-short
+
 // BEGIN org:block test-ui-toggle
 @(test)
 test_ui_toggle_active_state_resolves_style_to_primitive_fill :: proc(t: ^testing.T) {

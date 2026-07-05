@@ -25,6 +25,18 @@ example_status_surface :: proc(frame: ^ui.UI, progress, max_progress: int) {
 }
 // END org:block example-status
 
+// BEGIN org:block example-layout-options
+example_layout_options_surface :: proc(frame: ^ui.UI) {
+	padded := ui.Control_Options{label_padding = .One_Half}
+
+	ui.ui_panel(frame, ui.UI_ID(250), ui.cell_rect(0, 0, 28, 7))
+	ui.ui_text(frame, ui.UI_ID(251), ui.cell_rect(1, 0, 18, 1), "layout options", frame.style.text)
+	ui.ui_button(frame, ui.UI_ID(252), ui.cell_rect(1, 2, 10, 1), "default")
+	ui.ui_button(frame, ui.UI_ID(253), ui.cell_rect(1, 4, 10, 2), "one/half", options = padded)
+	ui.ui_toggle(frame, ui.UI_ID(254), ui.cell_rect(12, 4, 12, 2), "padded", true, options = padded)
+}
+// END org:block example-layout-options
+
 // BEGIN org:block example-dense-panel
 example_dense_control_panel :: proc(frame: ^ui.UI, material_active, heat_active: bool, progress, max_progress: int, run_pressed: bool = false, material_pressed: bool = false, heat_pressed: bool = false) {
 	ui.ui_panel(frame, ui.UI_ID(300), ui.cell_rect(0, 0, 32, 8))
