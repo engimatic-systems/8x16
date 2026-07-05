@@ -6,10 +6,42 @@ Edit this file first, then tangle generated Odin files into the repo.
 Generated Odin files include block markers so compiler diagnostics can be
 mapped back to this source.
 
+** Table of Contents
+
+- [[*Package =ui8x16=][Package =ui8x16=]]
+  - [[*Cell Metrics][Cell Metrics]]
+  - [[*Cell Rectangles][Cell Rectangles]]
+  - [[*Pixel Rectangles][Pixel Rectangles]]
+  - [[*Pixel Points][Pixel Points]]
+  - [[*Colors][Colors]]
+  - [[*UI Identity][UI Identity]]
+  - [[*Input State][Input State]]
+  - [[*Activation][Activation]]
+  - [[*Geometry Constructors][Geometry Constructors]]
+  - [[*Pixel Conversion][Pixel Conversion]]
+  - [[*Hit Testing][Hit Testing]]
+  - [[*Primitive Draw Commands][Primitive Draw Commands]]
+  - [[*Command Compiler][Command Compiler]]
+- [[*Tests][Tests]]
+
 * Package =ui8x16=
 
 The package boundary is intentionally small in PR 1: public value types only,
 with no drawing backend dependency.
+
+The frame pipeline separates interaction from lowering. Interaction queries
+consume sampled input and update caller-owned application state; lowering turns
+that state into primitive draw commands.
+
+#+begin_example
+sample platform input
+  -> ui_begin_frame
+  -> interaction/query phase
+  -> caller updates app state
+  -> lowering phase
+  -> ordered primitive draw commands
+  -> backend render
+#+end_example
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name package
 package ui8x16
@@ -143,9 +175,16 @@ ui_begin_frame :: proc(state: ^UI_State, input: Mouse_Input) {
 
 ** Activation
 
+Interaction queries are separate from command lowering. A typical frame samples
+platform input, calls =ui_begin_frame=, queries interaction state with these
+procedures, lets the caller update application state, then lowers semantic UI
+surfaces into draw commands.
+
 =ui_hit= marks advisory =hit_any=. =ui_activate= records press origin and
 returns true only when press and release both occur inside the same =id, rect=
-pair.
+pair. =ui_pressed= reports whether a recorded press is currently held for an
+=id=; callers pass that value into button/toggle lowering when they want pressed
+visuals.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-hit
 ui_hit :: proc(state: ^UI_State, rect: Cell_Rect) -> bool {
@@ -175,6 +214,13 @@ ui_activate :: proc(state: ^UI_State, id: UI_ID, rect: Cell_Rect, button: Mouse_
 		state.activated_any = true
 	}
 	return activated
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-pressed
+ui_pressed :: proc(state: ^UI_State, id: UI_ID, button: Mouse_Button = .Left) -> bool {
+	index := mouse_button_index(button)
+	return state.mouse.down[index] && state.pressed_id[index] == id
 }
 #+end_src
 
@@ -350,6 +396,298 @@ ui_end :: proc(buffer: ^Draw_Buffer) -> []Draw_Command {
 }
 #+end_src
 
+** Command Compiler
+
+The compiler layer accepts UI semantics, resolves style to raw colors, performs
+layout/debug checks, and emits primitive draw commands.
+
+In this package, "lowering" means moving down the abstraction ladder: caller
+intent becomes resolved colors, pixel geometry, debug warnings, and finally
+ordered primitive commands. Interaction decisions happen immediately before this
+lowering step, not inside it. The backend should only see the final primitive
+command stream.
+
+=UI_Style= is the style-resolution input. Semantic controls choose from these
+colors before emission so the backend never needs to know about button, panel,
+toggle, or bar states.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-style
+UI_Style :: struct {
+	text: Color,
+	line: Color,
+	panel: Color,
+
+	button_fill:        Color,
+	button_text:        Color,
+	button_active_fill: Color,
+	button_active_text: Color,
+
+	bar_fill:  Color,
+	bar_empty: Color,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name default-style
+default_style :: proc() -> UI_Style {
+	return UI_Style{
+		text = Color{r = 230, g = 230, b = 230, a = 255},
+		line = Color{r = 80, g = 80, b = 80, a = 255},
+		panel = Color{r = 24, g = 24, b = 24, a = 255},
+
+		button_fill = Color{r = 48, g = 48, b = 48, a = 255},
+		button_text = Color{r = 235, g = 235, b = 235, a = 255},
+		button_active_fill = Color{r = 220, g = 220, b = 220, a = 255},
+		button_active_text = Color{r = 16, g = 16, b = 16, a = 255},
+
+		bar_fill = Color{r = 96, g = 180, b = 120, a = 255},
+		bar_empty = Color{r = 44, g = 44, b = 44, a = 255},
+	}
+}
+#+end_src
+
+=Debug_Buffer= collects compiler/debug warnings. These checks happen before
+primitive emission because primitive commands intentionally carry no semantic
+layout policy, such as text bounds.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-warning-kind
+Debug_Warning_Kind :: enum {
+	Text_Overflow,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-warning
+Debug_Warning :: struct {
+	kind: Debug_Warning_Kind,
+	id:   UI_ID,
+	rect: Cell_Rect,
+
+	text:            string,
+	measured_width:  int,
+	available_width: int,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-buffer
+Debug_Buffer :: struct {
+	warnings: []Debug_Warning,
+	count:    int,
+
+	overflowed: bool,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-push
+debug_push :: proc(buffer: ^Debug_Buffer, warning: Debug_Warning) -> bool {
+	if buffer == nil {
+		return false
+	}
+	if buffer.count >= len(buffer.warnings) {
+		buffer.overflowed = true
+		return false
+	}
+
+	buffer.warnings[buffer.count] = warning
+	buffer.count += 1
+	return true
+}
+#+end_src
+
+=debug_text_overflow= de-duplicates by =UI_ID= within a frame. Repeated calls
+for the same semantic element should not flood the warning buffer.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-text-overflow
+debug_text_overflow :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect, text: string, measured_width, available_width: int) -> bool {
+	if buffer == nil {
+		return false
+	}
+
+	for i in 0..<buffer.count {
+		warning := buffer.warnings[i]
+		if warning.kind == .Text_Overflow && warning.id == id {
+			return false
+		}
+	}
+
+	return debug_push(buffer, Debug_Warning{
+		kind = .Text_Overflow,
+		id = id,
+		rect = rect,
+		text = text,
+		measured_width = measured_width,
+		available_width = available_width,
+	})
+}
+#+end_src
+
+=UI= is the per-frame compiler context. It groups output command storage,
+optional debug storage, and resolved style so semantic calls do not need to
+thread those arguments independently. It does not own interaction state. Text
+scale is not frame state: text-producing calls carry it explicitly and default
+to scale =1=.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-context
+UI :: struct {
+	draw:  ^Draw_Buffer,
+	debug: ^Debug_Buffer,
+	style: UI_Style,
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-context-proc
+ui_context :: proc {
+	ui_context_default,
+	ui_context_with_style,
+}
+
+ui_context_default :: proc(draw: ^Draw_Buffer, debug: ^Debug_Buffer) -> UI {
+	return ui_context_with_style(draw, debug, default_style())
+}
+
+ui_context_with_style :: proc(draw: ^Draw_Buffer, debug: ^Debug_Buffer, style: UI_Style) -> UI {
+	return UI{draw = draw, debug = debug, style = style}
+}
+#+end_src
+
+These helpers are the layout-lowering layer. They convert semantic values into
+bounded integers and pixel-space positions before primitive emission.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name int-clamp
+int_clamp :: proc(value, low, high: int) -> int {
+	if value < low {
+		return low
+	}
+	if value > high {
+		return high
+	}
+	return value
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name text-width-px
+text_width_px :: proc(text: string, scale: int) -> int {
+	assert(text_scale_valid(scale), "Text scale must be 1..4")
+	return len(text) * CELL_WIDTH * scale
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name pixel-origin
+pixel_origin :: proc(rect: Cell_Rect) -> Pixel_Point {
+	px := rect_px(rect)
+	return Pixel_Point{x = px.x, y = px.y}
+}
+#+end_src
+
+=compile_text= is the text-specific lowering point. It measures the text against
+the semantic rectangle, records overflow in the debug path, then emits a
+primitive =Text_Command= with only origin, bytes, color, and scale. Scale is
+per text emission so labels in the same frame can render at different integer
+scales.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name compile-text
+compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text: string, color: Color, scale: int) {
+	measured_width := text_width_px(text, scale)
+	available_width := rect.w * CELL_WIDTH
+	if measured_width > available_width {
+		debug_text_overflow(ui.debug, id, rect, text, measured_width, available_width)
+	}
+
+	draw_text(ui.draw, pos, text, color, scale)
+}
+#+end_src
+
+=ui_text= is the smallest semantic surface: it lowers the rectangle origin to
+pixels, performs text debug checks, and emits text.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-text
+ui_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, text: string, color: Color, scale: int = 1) {
+	compile_text(ui, id, rect, pixel_origin(rect), text, color, scale)
+}
+#+end_src
+
+=ui_box= and =ui_panel= lower framed regions into fill/stroke rectangles.
+=ui_panel= is style-specific; =ui_box= accepts raw colors.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-box
+ui_box :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, fill, line: Color) {
+	_ = id
+	px := rect_px(rect)
+	draw_fill_rect(ui.draw, px, fill)
+	draw_stroke_rect(ui.draw, px, line)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-panel
+ui_panel :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect) {
+	ui_box(ui, id, rect, ui.style.panel, ui.style.line)
+}
+#+end_src
+
+=ui_bar= lowers a scalar value into three primitives: empty fill, value fill,
+and outline. Value clamping belongs here because the backend should not know the
+bar's maximum or semantic range.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-bar
+ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill: Color) {
+	_ = id
+	px := rect_px(rect)
+	fill_px := px
+	fill_px.w = 0
+	if max_value > 0 {
+		fill_px.w = px.w * int_clamp(value, 0, max_value) / max_value
+	}
+
+	draw_fill_rect(ui.draw, px, ui.style.bar_empty)
+	draw_fill_rect(ui.draw, fill_px, fill)
+	draw_stroke_rect(ui.draw, px, ui.style.line)
+}
+#+end_src
+
+=ui_button= lowers a button visual into fill, stroke, and text primitives.
+Interaction is handled before this call; callers pass =pressed=true= when the
+interaction/query phase says this button is currently held. The label is inset
+by 2 pixels before text compilation. The label scale defaults to =1= but remains
+a per-call value.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-button
+ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, scale: int = 1, pressed: bool = false) {
+	fill := ui.style.button_fill
+	text_color := ui.style.button_text
+	if pressed {
+		fill = ui.style.button_active_fill
+		text_color = ui.style.button_active_text
+	}
+
+	ui_box(ui, id, rect, fill, ui.style.line)
+	text_rect := rect
+	text_px := rect_px(text_rect)
+	text_px.x += 2
+	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
+}
+#+end_src
+
+=ui_toggle= shares the button shape but takes active state from the caller. It
+does not flip that state. The caller handles activation in the interaction/query
+phase, updates application state, and passes the current =active= value here.
+Like buttons, toggle label scale defaults to =1= and pressed visual state is
+carried per call.
+
+#+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-toggle
+ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool, scale: int = 1, pressed: bool = false) {
+	fill := ui.style.button_fill
+	text_color := ui.style.button_text
+	if active || pressed {
+		fill = ui.style.button_active_fill
+		text_color = ui.style.button_active_text
+	}
+
+	ui_box(ui, id, rect, fill, ui.style.line)
+	text_rect := rect
+	text_px := rect_px(text_rect)
+	text_px.x += 2
+	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
+}
+#+end_src
+
 * Tests
 
 #+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-package
@@ -403,6 +741,30 @@ expect_stroke_rect_kind :: proc(t: ^testing.T, command: Draw_Command) {
 expect_text_kind :: proc(t: ^testing.T, command: Draw_Command) {
 	_, ok := command.(Text_Command)
 	testing.expect(t, ok)
+}
+
+expect_text_value :: proc(t: ^testing.T, command: Draw_Command, text: string) {
+	payload, ok := command.(Text_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.text, text)
+	}
+}
+
+expect_text_pos :: proc(t: ^testing.T, command: Draw_Command, pos: Pixel_Point) {
+	payload, ok := command.(Text_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.pos, pos)
+	}
+}
+
+expect_fill_rect_width :: proc(t: ^testing.T, command: Draw_Command, width: int) {
+	payload, ok := command.(Fill_Rect_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.rect.w, width)
+	}
 }
 #+end_src
 
@@ -636,5 +998,144 @@ test_draw_text_rejects_invalid_scale :: proc(t: ^testing.T) {
 
 	testing.expect_assert(t, "Text scale must be 1..4")
 	draw_text(&buffer, Pixel_Point{}, "x", Color{a = 255}, 0)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-helper
+test_ui_init :: proc(ui: ^UI, draw: ^Draw_Buffer, debug: ^Debug_Buffer, command_storage: []Draw_Command, warning_storage: []Debug_Warning) {
+	debug^ = Debug_Buffer{warnings = warning_storage}
+	draw^ = draw_buffer(command_storage)
+	ui^ = ui_context(draw, debug)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-text
+@(test)
+test_ui_text_emits_primitive_text_and_overflow_warning :: proc(t: ^testing.T) {
+	command_storage: [2]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
+	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
+
+	testing.expect_value(t, draw.count, 2)
+	expect_text_pos(t, draw.commands[0], Pixel_Point{x = 0, y = 0})
+	expect_text_value(t, draw.commands[0], "abc")
+	testing.expect_value(t, debug.count, 1)
+	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Text_Overflow)
+	testing.expect_value(t, debug.warnings[0].measured_width, 24)
+	testing.expect_value(t, debug.warnings[0].available_width, 8)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-text-scale
+@(test)
+test_ui_text_uses_per_call_scale :: proc(t: ^testing.T) {
+	command_storage: [2]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	ui_text(&ui, UI_ID(10), cell_rect(0, 0, 4, 1), "ab", ui.style.text, 2)
+	ui_text(&ui, UI_ID(11), cell_rect(0, 1, 2, 1), "ab", ui.style.text)
+
+	testing.expect_value(t, draw.count, 2)
+	expect_text(t, draw.commands[0], Pixel_Point{x = 0, y = 0}, "ab", ui.style.text, 2)
+	expect_text(t, draw.commands[1], Pixel_Point{x = 0, y = 16}, "ab", ui.style.text, 1)
+	testing.expect_value(t, debug.count, 0)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-box
+@(test)
+test_ui_box_compiles_to_fill_then_stroke :: proc(t: ^testing.T) {
+	command_storage: [2]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	fill := Color{r = 1, a = 255}
+	line := Color{r = 2, a = 255}
+	ui_box(&ui, UI_ID(2), cell_rect(1, 1, 2, 1), fill, line)
+
+	testing.expect_value(t, draw.count, 2)
+	expect_fill_rect(t, draw.commands[0], Pixel_Rect{x = 8, y = 16, w = 16, h = 16}, fill)
+	expect_stroke_rect(t, draw.commands[1], Pixel_Rect{x = 8, y = 16, w = 16, h = 16}, line)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-bar
+@(test)
+test_ui_bar_compiles_to_empty_fill_value_fill_and_stroke :: proc(t: ^testing.T) {
+	command_storage: [3]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	ui_bar(&ui, UI_ID(3), cell_rect(0, 0, 10, 1), 3, 10, ui.style.bar_fill)
+
+	testing.expect_value(t, draw.count, 3)
+	expect_fill_rect_kind(t, draw.commands[0])
+	expect_fill_rect(t, draw.commands[1], Pixel_Rect{x = 0, y = 0, w = 24, h = 16}, ui.style.bar_fill)
+	expect_stroke_rect_kind(t, draw.commands[2])
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-button
+@(test)
+test_ui_button_lowers_from_external_interaction_state :: proc(t: ^testing.T) {
+	command_storage: [8]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+	rect := cell_rect(0, 0, 5, 1)
+	id := UI_ID(4)
+
+	ui_begin_frame(&state, test_mouse_input(0, 0, left = true))
+	testing.expect(t, !ui_activate(&state, id, rect))
+	ui_button(&ui, id, rect, "run", pressed = ui_pressed(&state, id))
+
+	ui_begin_frame(&state, test_mouse_input(1, 1, left = false))
+	testing.expect(t, ui_activate(&state, id, rect))
+	ui_button(&ui, id, rect, "run", pressed = ui_pressed(&state, id))
+
+	commands := ui_end(&draw)
+	testing.expect_value(t, len(commands), 6)
+	expect_fill_rect(t, commands[0], Pixel_Rect{x = 0, y = 0, w = 40, h = 16}, ui.style.button_active_fill)
+	expect_stroke_rect_kind(t, commands[1])
+	expect_text_kind(t, commands[2])
+	expect_fill_rect(t, commands[3], Pixel_Rect{x = 0, y = 0, w = 40, h = 16}, ui.style.button_fill)
+	expect_text_pos(t, commands[5], Pixel_Point{x = 2, y = 0})
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-toggle
+@(test)
+test_ui_toggle_active_state_resolves_style_to_primitive_fill :: proc(t: ^testing.T) {
+	command_storage: [3]Draw_Command
+	warning_storage: [1]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	ui_toggle(&ui, UI_ID(5), cell_rect(0, 0, 6, 1), "snap", true)
+
+	testing.expect_value(t, draw.count, 3)
+	expect_fill_rect(t, draw.commands[0], Pixel_Rect{x = 0, y = 0, w = 48, h = 16}, ui.style.button_active_fill)
+	expect_text_kind(t, draw.commands[2])
 }
 #+end_src
