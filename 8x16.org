@@ -1340,30 +1340,30 @@ to keep activation and visuals coupled by data instead of duplicated literals.
 
 #+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-drawing-control-rects
 example_drawing_clear_rect :: proc() -> Cell_Rect {
-	return cell_rect(1, 7, 7, 1)
+	return cell_rect(1, 5, 7, 1)
 }
 
 example_drawing_erase_rect :: proc() -> Cell_Rect {
-	return cell_rect(9, 7, 8, 1)
+	return cell_rect(9, 5, 8, 1)
 }
 
 example_drawing_grid_rect :: proc() -> Cell_Rect {
-	return cell_rect(1, 9, 7, 1)
+	return cell_rect(1, 7, 7, 1)
 }
 
 example_drawing_brush_down_rect :: proc() -> Cell_Rect {
-	return cell_rect(9, 9, 3, 1)
+	return cell_rect(9, 7, 3, 1)
 }
 
 example_drawing_brush_up_rect :: proc() -> Cell_Rect {
-	return cell_rect(13, 9, 3, 1)
+	return cell_rect(13, 7, 3, 1)
 }
 #+end_src
 
 #+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-drawing-controls
 example_drawing_controls_surface :: proc(ui: ^UI, erase_active, grid_active: bool, brush_size, max_brush_size: int, clear_pressed: bool = false, erase_pressed: bool = false, grid_pressed: bool = false, brush_down_pressed: bool = false, brush_up_pressed: bool = false) {
-	ui_panel(ui, UI_ID(400), cell_rect(0, 4, 18, 12))
-	ui_text(ui, UI_ID(401), cell_rect(1, 5, 8, 1), "draw lab", ui.style.text)
+	ui_panel(ui, UI_ID(400), cell_rect(0, 0, 18, 20))
+	ui_text(ui, UI_ID(401), cell_rect(1, 1, 16, 2), "draw lab", ui.style.text, scale = 2)
 	ui_button(ui, UI_ID(402), example_drawing_clear_rect(), "clear", pressed = clear_pressed)
 	ui_toggle(ui, UI_ID(403), example_drawing_erase_rect(), "erase", erase_active, pressed = erase_pressed)
 	ui_toggle(ui, UI_ID(404), example_drawing_grid_rect(), "grid", grid_active, pressed = grid_pressed)
@@ -1501,6 +1501,10 @@ The drawing app is stateful. The UI controls update caller-owned app state, the
 canvas is drawn directly with raylib as arbitrary application graphics, and the
 8x16 UI is rendered over the same frame through the primitive command backend.
 It uses the bundled Oldschool PC Font Pack VGA font in =assets/fonts=.
+
+Example UI layout is described in 8x16 cells: columns are 8 px wide and rows
+are 16 px tall. Pixel dimensions are backend output, not the vocabulary for
+placing toolkit controls.
 
 Run it from the repository root:
 
