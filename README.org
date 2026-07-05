@@ -7,3 +7,21 @@ The design kernel is fixed 8x16 cell geometry: layout is expressed in integer ce
 The canonical implementation source is [[file:8x16.org][8x16.org]]. Generated Odin package files live under [[file:ui8x16][ui8x16]] and should be regenerated from the Org source.
 
 See [[file:SPEC.org][SPEC.org]] for the current v0 contract and [[file:PLAN.org][PLAN.org]] for staged work.
+
+* Examples
+
+Run the stateful raylib drawing example from the repository root:
+
+#+begin_src sh
+odin run examples/drawing_app.odin -file
+#+end_src
+
+Build it without launching a window:
+
+#+begin_src sh
+odin build examples/drawing_app.odin -file -out:/tmp/8x16-drawing-app
+#+end_src
+
+The example uses the bundled =PxPlus_IBM_VGA_8x16.ttf= font from the Oldschool
+PC Font Pack. Font attribution and CC BY-SA 4.0 license text live in
+[[file:assets/fonts/README.md][assets/fonts/README.md]].
