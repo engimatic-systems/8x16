@@ -449,3 +449,93 @@ test_ui_toggle_active_state_resolves_style_to_primitive_fill :: proc(t: ^testing
 	expect_text_kind(t, draw.commands[2])
 }
 // END org:block test-ui-toggle
+
+// BEGIN org:block test-example-toolbar
+@(test)
+test_example_toolbar_surface_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [16]Draw_Command
+	warning_storage: [4]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	example_toolbar_surface(&ui, true)
+	commands := ui_end(&draw)
+
+	testing.expect_value(t, len(commands), 9)
+	expect_fill_rect_kind(t, commands[0])
+	expect_stroke_rect_kind(t, commands[1])
+	expect_text_kind(t, commands[2])
+	expect_text_value(t, commands[5], "run")
+	expect_text_value(t, commands[8], "snap")
+}
+// END org:block test-example-toolbar
+
+// BEGIN org:block test-example-status
+@(test)
+test_example_status_surface_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [8]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	example_status_surface(&ui, 5, 10)
+	commands := ui_end(&draw)
+
+	testing.expect_value(t, len(commands), 6)
+	expect_fill_rect_kind(t, commands[0])
+	expect_text_value(t, commands[2], "status")
+	expect_fill_rect_width(t, commands[4], 120)
+}
+// END org:block test-example-status
+
+// BEGIN org:block test-example-dense-panel
+@(test)
+test_example_dense_control_panel_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [24]Draw_Command
+	warning_storage: [4]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	example_dense_control_panel(&ui, true, false, 3, 6)
+	commands := ui_end(&draw)
+
+	testing.expect_value(t, len(commands), 16)
+	expect_text_value(t, commands[2], "control panel")
+	expect_text_value(t, commands[5], "run")
+	expect_text_value(t, commands[8], "material")
+	expect_text_value(t, commands[11], "heat")
+	expect_fill_rect_width(t, commands[13], 120)
+	expect_text_value(t, commands[15], "cells use 8x16 grid")
+}
+// END org:block test-example-dense-panel
+
+// BEGIN org:block test-example-drawing-controls
+@(test)
+test_example_drawing_controls_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [24]Draw_Command
+	warning_storage: [4]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	example_drawing_controls_surface(&ui, true, false, 3, 8)
+	commands := ui_end(&draw)
+
+	testing.expect_value(t, len(commands), 22)
+	expect_text_value(t, commands[2], "draw lab")
+	expect_text_value(t, commands[5], "clear")
+	expect_text_value(t, commands[8], "erase")
+	expect_text_value(t, commands[11], "grid")
+	expect_text_value(t, commands[14], "-")
+	expect_text_value(t, commands[17], "+")
+	expect_text_value(t, commands[18], "brush size")
+	expect_fill_rect_width(t, commands[20], 48)
+}
+// END org:block test-example-drawing-controls
