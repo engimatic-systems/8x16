@@ -23,6 +23,7 @@ mapped back to this source.
   - [[*Primitive Draw Commands][Primitive Draw Commands]]
   - [[*Command Compiler][Command Compiler]]
 - [[*Tests][Tests]]
+- [[*Raylib Backend][Raylib Backend]]
 
 * Package =ui8x16=
 
@@ -1137,5 +1138,178 @@ test_ui_toggle_active_state_resolves_style_to_primitive_fill :: proc(t: ^testing
 	testing.expect_value(t, draw.count, 3)
 	expect_fill_rect(t, draw.commands[0], Pixel_Rect{x = 0, y = 0, w = 48, h = 16}, ui.style.button_active_fill)
 	expect_text_kind(t, draw.commands[2])
+}
+#+end_src
+
+* Raylib Backend
+
+The raylib backend is a separate package. It renders ordered primitive commands
+and owns only backend concerns: font handles, texture filtering, and concrete
+raylib draw calls.
+
+The caller owns the raylib application context. This package assumes the window
+has already been initialized and that rendering happens inside an active
+=rl.BeginDrawing= / =rl.EndDrawing= pair. Callers remain responsible for
+=rl.InitWindow=, =rl.SetTargetFPS=, =rl.BeginDrawing=, =rl.EndDrawing=, and
+=rl.CloseWindow=.
+
+This boundary keeps the backend narrow. It does not own style resolution, input
+routing, hover detection, activation, text overflow policy, clipping policy, or
+application canvas rendering.
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-package
+package raylib_8x16
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-imports
+import "core:c"
+import "core:testing"
+import rl "vendor:raylib"
+import ui "../ui8x16"
+#+end_src
+
+=Renderer= is the happy-path backend handle. It always owns the font loaded by
+=load_renderer= and unloads it through =unload_renderer=. Borrowed/shared font
+construction can be added later if a caller needs that granularity; v0 keeps
+lifetime rules visible and singular.
+
+The caller provides scratch rune storage. Text rendering converts each command's
+string into that caller-owned buffer before calling raylib, and fails loudly if
+the buffer is too small.
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-renderer
+Renderer :: struct {
+	font:       rl.Font,
+	text_runes: []rune,
+	spacing:    f32,
+}
+#+end_src
+
+Conversion helpers translate core value types into raylib value types. They do
+not change layout decisions or resolve style.
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-color
+raylib_color :: proc(color: ui.Color) -> rl.Color {
+	return rl.Color{color.r, color.g, color.b, color.a}
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-rect
+raylib_rect :: proc(rect: ui.Pixel_Rect) -> rl.Rectangle {
+	return rl.Rectangle{
+		x = f32(rect.x),
+		y = f32(rect.y),
+		width = f32(rect.w),
+		height = f32(rect.h),
+	}
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-point
+raylib_point :: proc(point: ui.Pixel_Point) -> rl.Vector2 {
+	return rl.Vector2{f32(point.x), f32(point.y)}
+}
+#+end_src
+
+=load_renderer= loads the font and forces point filtering so the fixed 8x16
+design kernel stays crisp at integer scales. =unload_renderer= releases the
+owned font; callers should pair these calls around the raylib application
+lifetime.
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-renderer-procs
+load_renderer :: proc(font_path: cstring, text_runes: []rune, spacing: f32 = 0) -> Renderer {
+	font := rl.LoadFont(font_path)
+	rl.SetTextureFilter(font.texture, .POINT)
+	return Renderer{font = font, text_runes = text_runes, spacing = spacing}
+}
+
+unload_renderer :: proc(renderer: ^Renderer) {
+	rl.UnloadFont(renderer.font)
+}
+#+end_src
+
+=text_runes= is transient conversion scratch for the immediate draw call. The
+returned slice aliases =renderer.text_runes= and is not stable after the next
+text command.
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-text-runes
+text_runes :: proc(renderer: ^Renderer, text: string) -> []rune {
+	assert(len(text) <= len(renderer.text_runes), "Renderer text rune scratch too small")
+	for i in 0..<len(text) {
+		renderer.text_runes[i] = rune(text[i])
+	}
+	return renderer.text_runes[:len(text)]
+}
+#+end_src
+
+=render_command= is the only backend dispatch point. It switches over primitive
+draw command payloads and issues concrete raylib calls in place. Text scale is
+limited by the core =Text_Command= contract; raylib receives the resolved pixel
+font size.
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-render-command
+render_command :: proc(renderer: ^Renderer, command: ui.Draw_Command) {
+	switch payload in command {
+	case ui.Fill_Rect_Command:
+		rl.DrawRectangleRec(raylib_rect(payload.rect), raylib_color(payload.color))
+	case ui.Stroke_Rect_Command:
+		rl.DrawRectangleLinesEx(raylib_rect(payload.rect), 1, raylib_color(payload.color))
+	case ui.Text_Command:
+		runes := text_runes(renderer, payload.text)
+		rl.DrawTextCodepoints(
+			renderer.font,
+			raw_data(runes),
+			c.int(len(runes)),
+			raylib_point(payload.pos),
+			f32(ui.CELL_HEIGHT * payload.scale),
+			renderer.spacing,
+			raylib_color(payload.color),
+		)
+	}
+}
+#+end_src
+
+=render_commands= preserves command-buffer order. There is no z coordinate and
+no backend sorting.
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-render-commands
+render_commands :: proc(renderer: ^Renderer, commands: []ui.Draw_Command) {
+	for command in commands {
+		render_command(renderer, command)
+	}
+}
+#+end_src
+
+The smoke path builds a small primitive command list without opening a window.
+Tests assert command shape; visual smoke belongs to callers or examples that
+create a raylib context.
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-smoke
+smoke_commands :: proc(storage: []ui.Draw_Command) -> []ui.Draw_Command {
+	buffer := ui.draw_buffer(storage)
+	ui.draw_fill_rect(&buffer, ui.Pixel_Rect{x = 0, y = 0, w = 80, h = 32}, ui.Color{r = 24, g = 24, b = 24, a = 255})
+	ui.draw_stroke_rect(&buffer, ui.Pixel_Rect{x = 0, y = 0, w = 80, h = 32}, ui.Color{r = 180, g = 180, b = 180, a = 255})
+	ui.draw_text(&buffer, ui.Pixel_Point{x = 8, y = 8}, "8x16", ui.Color{r = 235, g = 235, b = 235, a = 255}, 1)
+	return ui.ui_end(&buffer)
+}
+
+smoke_render :: proc(renderer: ^Renderer, storage: []ui.Draw_Command) {
+	render_commands(renderer, smoke_commands(storage))
+}
+#+end_src
+
+#+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-smoke-test
+@(test)
+test_smoke_commands_emit_primitives :: proc(t: ^testing.T) {
+	storage: [3]ui.Draw_Command
+	commands := smoke_commands(storage[:])
+
+	testing.expect_value(t, len(commands), 3)
+	_, fill_ok := commands[0].(ui.Fill_Rect_Command)
+	_, stroke_ok := commands[1].(ui.Stroke_Rect_Command)
+	_, text_ok := commands[2].(ui.Text_Command)
+	testing.expect(t, fill_ok)
+	testing.expect(t, stroke_ok)
+	testing.expect(t, text_ok)
 }
 #+end_src
