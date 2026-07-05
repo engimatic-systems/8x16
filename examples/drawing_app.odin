@@ -9,12 +9,12 @@ import ui "../ui8x16"
 import rui "../raylib_8x16"
 
 WINDOW_WIDTH :: 400
-WINDOW_HEIGHT :: 320
+WINDOW_HEIGHT :: 256
 
 FONT_PATH :: "assets/fonts/PxPlus_IBM_VGA_8x16.ttf"
 
 CANVAS_X :: 176
-CANVAS_Y :: 64
+CANVAS_Y :: 32
 CANVAS_COLS :: 64
 CANVAS_ROWS :: 64
 PIXEL_SIZE :: 3
