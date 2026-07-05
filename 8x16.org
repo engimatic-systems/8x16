@@ -6,25 +6,6 @@ Edit this file first, then tangle generated Odin files into the repo.
 Generated Odin files include block markers so compiler diagnostics can be
 mapped back to this source.
 
-** Table of Contents
-
-- [[*Package =ui8x16=][Package =ui8x16=]]
-  - [[*Cell Metrics][Cell Metrics]]
-  - [[*Cell Rectangles][Cell Rectangles]]
-  - [[*Pixel Rectangles][Pixel Rectangles]]
-  - [[*Pixel Points][Pixel Points]]
-  - [[*Colors][Colors]]
-  - [[*UI Identity][UI Identity]]
-  - [[*Input State][Input State]]
-  - [[*Activation][Activation]]
-  - [[*Geometry Constructors][Geometry Constructors]]
-  - [[*Pixel Conversion][Pixel Conversion]]
-  - [[*Hit Testing][Hit Testing]]
-  - [[*Primitive Draw Commands][Primitive Draw Commands]]
-  - [[*Command Compiler][Command Compiler]]
-- [[*Tests][Tests]]
-- [[*Raylib Backend][Raylib Backend]]
-
 * Package =ui8x16=
 
 The package boundary is intentionally small in PR 1: public value types only,
