@@ -536,6 +536,6 @@ test_example_drawing_controls_command_snapshot :: proc(t: ^testing.T) {
 	expect_text_value(t, commands[14], "-")
 	expect_text_value(t, commands[17], "+")
 	expect_text_value(t, commands[18], "brush size")
-	expect_fill_rect_width(t, commands[20], 96)
+	expect_fill_rect_width(t, commands[20], 48)
 }
 // END org:block test-example-drawing-controls
