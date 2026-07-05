@@ -473,16 +473,16 @@ debug_text_overflow :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect, t
 #+end_src
 
 =UI= is the per-frame compiler context. It groups interaction state, output
-command storage, optional debug storage, resolved style, and text scale so
-semantic calls do not need to thread those arguments independently.
+command storage, optional debug storage, and resolved style so semantic calls do
+not need to thread those arguments independently. Text scale is not frame state:
+text-producing calls carry it explicitly and default to scale =1=.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-context
 UI :: struct {
-	state:      ^UI_State,
-	draw:       ^Draw_Buffer,
-	debug:      ^Debug_Buffer,
-	style:      UI_Style,
-	text_scale: int,
+	state: ^UI_State,
+	draw:  ^Draw_Buffer,
+	debug: ^Debug_Buffer,
+	style: UI_Style,
 }
 #+end_src
 
@@ -490,20 +490,14 @@ UI :: struct {
 ui_context :: proc {
 	ui_context_default,
 	ui_context_with_style,
-	ui_context_with_scale,
 }
 
 ui_context_default :: proc(state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer) -> UI {
-	return ui_context_with_scale(state, draw, debug, default_style(), 1)
+	return ui_context_with_style(state, draw, debug, default_style())
 }
 
 ui_context_with_style :: proc(state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer, style: UI_Style) -> UI {
-	return ui_context_with_scale(state, draw, debug, style, 1)
-}
-
-ui_context_with_scale :: proc(state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer, style: UI_Style, text_scale: int) -> UI {
-	assert(text_scale_valid(text_scale), "Text scale must be 1..4")
-	return UI{state = state, draw = draw, debug = debug, style = style, text_scale = text_scale}
+	return UI{state = state, draw = draw, debug = debug, style = style}
 }
 #+end_src
 
@@ -538,17 +532,19 @@ pixel_origin :: proc(rect: Cell_Rect) -> Pixel_Point {
 
 =compile_text= is the text-specific lowering point. It measures the text against
 the semantic rectangle, records overflow in the debug path, then emits a
-primitive =Text_Command= with only origin, bytes, color, and scale.
+primitive =Text_Command= with only origin, bytes, color, and scale. Scale is
+per text emission so labels in the same frame can render at different integer
+scales.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name compile-text
-compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text: string, color: Color) {
-	measured_width := text_width_px(text, ui.text_scale)
+compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text: string, color: Color, scale: int) {
+	measured_width := text_width_px(text, scale)
 	available_width := rect.w * CELL_WIDTH
 	if measured_width > available_width {
 		debug_text_overflow(ui.debug, id, rect, text, measured_width, available_width)
 	}
 
-	draw_text(ui.draw, pos, text, color, ui.text_scale)
+	draw_text(ui.draw, pos, text, color, scale)
 }
 #+end_src
 
@@ -556,9 +552,9 @@ compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text
 the rectangle origin to pixels, performs text debug checks, and emits text.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-text
-ui_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, text: string, color: Color) {
+ui_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, text: string, color: Color, scale: int = 1) {
 	ui_hit(ui.state, rect)
-	compile_text(ui, id, rect, pixel_origin(rect), text, color)
+	compile_text(ui, id, rect, pixel_origin(rect), text, color, scale)
 }
 #+end_src
 
@@ -602,10 +598,11 @@ ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill:
 
 =ui_button= combines interaction, style resolution, layout lowering, and
 primitive emission. Activation comes from =ui_activate=; the pressed visual state
-selects colors; the label is inset by 2 pixels before text compilation.
+selects colors; the label is inset by 2 pixels before text compilation. The
+label scale defaults to =1= but remains a per-call value.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-button
-ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string) -> bool {
+ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, scale: int = 1) -> bool {
 	activated := ui_activate(ui.state, id, rect)
 	pressed := ui.state.mouse.down[mouse_button_index(.Left)] &&
 	           ui.state.pressed_id[mouse_button_index(.Left)] == id
@@ -621,16 +618,17 @@ ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string) -> bool {
 	text_rect := rect
 	text_px := rect_px(text_rect)
 	text_px.x += 2
-	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color)
+	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
 	return activated
 }
 #+end_src
 
 =ui_toggle= shares the button shape but takes active state from the caller. It
 returns activation so the caller can decide whether and how to flip that state.
+Like buttons, toggle label scale defaults to =1= and is carried per call.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-toggle
-ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool) -> bool {
+ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool, scale: int = 1) -> bool {
 	activated := ui_activate(ui.state, id, rect)
 
 	fill := ui.style.button_fill
@@ -644,7 +642,7 @@ ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bo
 	text_rect := rect
 	text_px := rect_px(text_rect)
 	text_px.x += 2
-	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color)
+	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
 	return activated
 }
 #+end_src
@@ -992,6 +990,28 @@ test_ui_text_emits_primitive_text_and_overflow_warning :: proc(t: ^testing.T) {
 	testing.expect_value(t, debug.warnings[0].kind, Debug_Warning_Kind.Text_Overflow)
 	testing.expect_value(t, debug.warnings[0].measured_width, 24)
 	testing.expect_value(t, debug.warnings[0].available_width, 8)
+}
+#+end_src
+
+#+begin_src odin :tangle ui8x16/core_test.odin :noweb no :comments no :name test-ui-text-scale
+@(test)
+test_ui_text_uses_per_call_scale :: proc(t: ^testing.T) {
+	command_storage: [2]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	ui_text(&ui, UI_ID(10), cell_rect(0, 0, 4, 1), "ab", ui.style.text, 2)
+	ui_text(&ui, UI_ID(11), cell_rect(0, 1, 2, 1), "ab", ui.style.text)
+
+	testing.expect_value(t, draw.count, 2)
+	expect_text(t, draw.commands[0], Pixel_Point{x = 0, y = 0}, "ab", ui.style.text, 2)
+	expect_text(t, draw.commands[1], Pixel_Point{x = 0, y = 16}, "ab", ui.style.text, 1)
+	testing.expect_value(t, debug.count, 0)
 }
 #+end_src
 

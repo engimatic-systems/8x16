@@ -344,6 +344,28 @@ test_ui_text_emits_primitive_text_and_overflow_warning :: proc(t: ^testing.T) {
 }
 // END org:block test-ui-text
 
+// BEGIN org:block test-ui-text-scale
+@(test)
+test_ui_text_uses_per_call_scale :: proc(t: ^testing.T) {
+	command_storage: [2]Draw_Command
+	warning_storage: [2]Debug_Warning
+	ui: UI
+	state: UI_State
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	ui_begin_frame(&state, test_mouse_input(0, 0))
+
+	ui_text(&ui, UI_ID(10), cell_rect(0, 0, 4, 1), "ab", ui.style.text, 2)
+	ui_text(&ui, UI_ID(11), cell_rect(0, 1, 2, 1), "ab", ui.style.text)
+
+	testing.expect_value(t, draw.count, 2)
+	expect_text(t, draw.commands[0], Pixel_Point{x = 0, y = 0}, "ab", ui.style.text, 2)
+	expect_text(t, draw.commands[1], Pixel_Point{x = 0, y = 16}, "ab", ui.style.text, 1)
+	testing.expect_value(t, debug.count, 0)
+}
+// END org:block test-ui-text-scale
+
 // BEGIN org:block test-ui-box
 @(test)
 test_ui_box_compiles_to_fill_then_stroke :: proc(t: ^testing.T) {

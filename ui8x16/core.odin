@@ -348,11 +348,10 @@ debug_text_overflow :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect, t
 
 // BEGIN org:block ui-context
 UI :: struct {
-	state:      ^UI_State,
-	draw:       ^Draw_Buffer,
-	debug:      ^Debug_Buffer,
-	style:      UI_Style,
-	text_scale: int,
+	state: ^UI_State,
+	draw:  ^Draw_Buffer,
+	debug: ^Debug_Buffer,
+	style: UI_Style,
 }
 // END org:block ui-context
 
@@ -360,20 +359,14 @@ UI :: struct {
 ui_context :: proc {
 	ui_context_default,
 	ui_context_with_style,
-	ui_context_with_scale,
 }
 
 ui_context_default :: proc(state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer) -> UI {
-	return ui_context_with_scale(state, draw, debug, default_style(), 1)
+	return ui_context_with_style(state, draw, debug, default_style())
 }
 
 ui_context_with_style :: proc(state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer, style: UI_Style) -> UI {
-	return ui_context_with_scale(state, draw, debug, style, 1)
-}
-
-ui_context_with_scale :: proc(state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer, style: UI_Style, text_scale: int) -> UI {
-	assert(text_scale_valid(text_scale), "Text scale must be 1..4")
-	return UI{state = state, draw = draw, debug = debug, style = style, text_scale = text_scale}
+	return UI{state = state, draw = draw, debug = debug, style = style}
 }
 // END org:block ui-context-proc
 
@@ -404,21 +397,21 @@ pixel_origin :: proc(rect: Cell_Rect) -> Pixel_Point {
 // END org:block pixel-origin
 
 // BEGIN org:block compile-text
-compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text: string, color: Color) {
-	measured_width := text_width_px(text, ui.text_scale)
+compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text: string, color: Color, scale: int) {
+	measured_width := text_width_px(text, scale)
 	available_width := rect.w * CELL_WIDTH
 	if measured_width > available_width {
 		debug_text_overflow(ui.debug, id, rect, text, measured_width, available_width)
 	}
 
-	draw_text(ui.draw, pos, text, color, ui.text_scale)
+	draw_text(ui.draw, pos, text, color, scale)
 }
 // END org:block compile-text
 
 // BEGIN org:block ui-text
-ui_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, text: string, color: Color) {
+ui_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, text: string, color: Color, scale: int = 1) {
 	ui_hit(ui.state, rect)
-	compile_text(ui, id, rect, pixel_origin(rect), text, color)
+	compile_text(ui, id, rect, pixel_origin(rect), text, color, scale)
 }
 // END org:block ui-text
 
@@ -454,7 +447,7 @@ ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill:
 // END org:block ui-bar
 
 // BEGIN org:block ui-button
-ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string) -> bool {
+ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, scale: int = 1) -> bool {
 	activated := ui_activate(ui.state, id, rect)
 	pressed := ui.state.mouse.down[mouse_button_index(.Left)] &&
 	           ui.state.pressed_id[mouse_button_index(.Left)] == id
@@ -470,13 +463,13 @@ ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string) -> bool {
 	text_rect := rect
 	text_px := rect_px(text_rect)
 	text_px.x += 2
-	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color)
+	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
 	return activated
 }
 // END org:block ui-button
 
 // BEGIN org:block ui-toggle
-ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool) -> bool {
+ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool, scale: int = 1) -> bool {
 	activated := ui_activate(ui.state, id, rect)
 
 	fill := ui.style.button_fill
@@ -490,7 +483,7 @@ ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bo
 	text_rect := rect
 	text_px := rect_px(text_rect)
 	text_px.x += 2
-	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color)
+	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
 	return activated
 }
 // END org:block ui-toggle
