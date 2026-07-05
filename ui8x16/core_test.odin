@@ -312,10 +312,10 @@ test_draw_text_rejects_invalid_scale :: proc(t: ^testing.T) {
 // END org:block test-text-scale
 
 // BEGIN org:block test-ui-helper
-test_ui_init :: proc(ui: ^UI, state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer, command_storage: []Draw_Command, warning_storage: []Debug_Warning) {
+test_ui_init :: proc(ui: ^UI, draw: ^Draw_Buffer, debug: ^Debug_Buffer, command_storage: []Draw_Command, warning_storage: []Debug_Warning) {
 	debug^ = Debug_Buffer{warnings = warning_storage}
 	draw^ = draw_buffer(command_storage)
-	ui^ = ui_context(state, draw, debug)
+	ui^ = ui_context(draw, debug)
 }
 // END org:block test-ui-helper
 
@@ -325,11 +325,9 @@ test_ui_text_emits_primitive_text_and_overflow_warning :: proc(t: ^testing.T) {
 	command_storage: [2]Draw_Command
 	warning_storage: [2]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
-	ui_begin_frame(&state, test_mouse_input(0, 0))
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
 	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
 	ui_text(&ui, UI_ID(1), cell_rect(0, 0, 1, 1), "abc", ui.style.text)
@@ -350,11 +348,9 @@ test_ui_text_uses_per_call_scale :: proc(t: ^testing.T) {
 	command_storage: [2]Draw_Command
 	warning_storage: [2]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
-	ui_begin_frame(&state, test_mouse_input(0, 0))
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
 	ui_text(&ui, UI_ID(10), cell_rect(0, 0, 4, 1), "ab", ui.style.text, 2)
 	ui_text(&ui, UI_ID(11), cell_rect(0, 1, 2, 1), "ab", ui.style.text)
@@ -372,10 +368,9 @@ test_ui_box_compiles_to_fill_then_stroke :: proc(t: ^testing.T) {
 	command_storage: [2]Draw_Command
 	warning_storage: [1]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
 	fill := Color{r = 1, a = 255}
 	line := Color{r = 2, a = 255}
@@ -393,10 +388,9 @@ test_ui_bar_compiles_to_empty_fill_value_fill_and_stroke :: proc(t: ^testing.T) 
 	command_storage: [3]Draw_Command
 	warning_storage: [1]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
 	ui_bar(&ui, UI_ID(3), cell_rect(0, 0, 10, 1), 3, 10, ui.style.bar_fill)
 
@@ -409,27 +403,31 @@ test_ui_bar_compiles_to_empty_fill_value_fill_and_stroke :: proc(t: ^testing.T) 
 
 // BEGIN org:block test-ui-button
 @(test)
-test_ui_button_returns_activation_and_compiles_primitives :: proc(t: ^testing.T) {
+test_ui_button_lowers_from_external_interaction_state :: proc(t: ^testing.T) {
 	command_storage: [8]Draw_Command
 	warning_storage: [1]Debug_Warning
 	ui: UI
 	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 	rect := cell_rect(0, 0, 5, 1)
+	id := UI_ID(4)
 
 	ui_begin_frame(&state, test_mouse_input(0, 0, left = true))
-	testing.expect(t, !ui_button(&ui, UI_ID(4), rect, "run"))
+	testing.expect(t, !ui_activate(&state, id, rect))
+	ui_button(&ui, id, rect, "run", pressed = ui_pressed(&state, id))
 
 	ui_begin_frame(&state, test_mouse_input(1, 1, left = false))
-	testing.expect(t, ui_button(&ui, UI_ID(4), rect, "run"))
+	testing.expect(t, ui_activate(&state, id, rect))
+	ui_button(&ui, id, rect, "run", pressed = ui_pressed(&state, id))
 
 	commands := ui_end(&draw)
 	testing.expect_value(t, len(commands), 6)
-	expect_fill_rect_kind(t, commands[0])
+	expect_fill_rect(t, commands[0], Pixel_Rect{x = 0, y = 0, w = 40, h = 16}, ui.style.button_active_fill)
 	expect_stroke_rect_kind(t, commands[1])
 	expect_text_kind(t, commands[2])
+	expect_fill_rect(t, commands[3], Pixel_Rect{x = 0, y = 0, w = 40, h = 16}, ui.style.button_fill)
 	expect_text_pos(t, commands[5], Pixel_Point{x = 2, y = 0})
 }
 // END org:block test-ui-button
@@ -440,10 +438,9 @@ test_ui_toggle_active_state_resolves_style_to_primitive_fill :: proc(t: ^testing
 	command_storage: [3]Draw_Command
 	warning_storage: [1]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
 	ui_toggle(&ui, UI_ID(5), cell_rect(0, 0, 6, 1), "snap", true)
 

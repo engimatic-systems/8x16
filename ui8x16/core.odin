@@ -127,6 +127,13 @@ ui_activate :: proc(state: ^UI_State, id: UI_ID, rect: Cell_Rect, button: Mouse_
 }
 // END org:block ui-activate
 
+// BEGIN org:block ui-pressed
+ui_pressed :: proc(state: ^UI_State, id: UI_ID, button: Mouse_Button = .Left) -> bool {
+	index := mouse_button_index(button)
+	return state.mouse.down[index] && state.pressed_id[index] == id
+}
+// END org:block ui-pressed
+
 // BEGIN org:block cell-rect-proc
 cell_rect :: proc(col, row, w, h: int) -> Cell_Rect {
 	assert(w > 0, "Cell_Rect width must be positive")
@@ -348,7 +355,6 @@ debug_text_overflow :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect, t
 
 // BEGIN org:block ui-context
 UI :: struct {
-	state: ^UI_State,
 	draw:  ^Draw_Buffer,
 	debug: ^Debug_Buffer,
 	style: UI_Style,
@@ -361,12 +367,12 @@ ui_context :: proc {
 	ui_context_with_style,
 }
 
-ui_context_default :: proc(state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer) -> UI {
-	return ui_context_with_style(state, draw, debug, default_style())
+ui_context_default :: proc(draw: ^Draw_Buffer, debug: ^Debug_Buffer) -> UI {
+	return ui_context_with_style(draw, debug, default_style())
 }
 
-ui_context_with_style :: proc(state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debug_Buffer, style: UI_Style) -> UI {
-	return UI{state = state, draw = draw, debug = debug, style = style}
+ui_context_with_style :: proc(draw: ^Draw_Buffer, debug: ^Debug_Buffer, style: UI_Style) -> UI {
+	return UI{draw = draw, debug = debug, style = style}
 }
 // END org:block ui-context-proc
 
@@ -410,14 +416,13 @@ compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text
 
 // BEGIN org:block ui-text
 ui_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, text: string, color: Color, scale: int = 1) {
-	ui_hit(ui.state, rect)
 	compile_text(ui, id, rect, pixel_origin(rect), text, color, scale)
 }
 // END org:block ui-text
 
 // BEGIN org:block ui-box
 ui_box :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, fill, line: Color) {
-	ui_hit(ui.state, rect)
+	_ = id
 	px := rect_px(rect)
 	draw_fill_rect(ui.draw, px, fill)
 	draw_stroke_rect(ui.draw, px, line)
@@ -432,7 +437,7 @@ ui_panel :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect) {
 
 // BEGIN org:block ui-bar
 ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill: Color) {
-	ui_hit(ui.state, rect)
+	_ = id
 	px := rect_px(rect)
 	fill_px := px
 	fill_px.w = 0
@@ -447,11 +452,7 @@ ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill:
 // END org:block ui-bar
 
 // BEGIN org:block ui-button
-ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, scale: int = 1) -> bool {
-	activated := ui_activate(ui.state, id, rect)
-	pressed := ui.state.mouse.down[mouse_button_index(.Left)] &&
-	           ui.state.pressed_id[mouse_button_index(.Left)] == id
-
+ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, scale: int = 1, pressed: bool = false) {
 	fill := ui.style.button_fill
 	text_color := ui.style.button_text
 	if pressed {
@@ -464,17 +465,14 @@ ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, scale: int
 	text_px := rect_px(text_rect)
 	text_px.x += 2
 	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
-	return activated
 }
 // END org:block ui-button
 
 // BEGIN org:block ui-toggle
-ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool, scale: int = 1) -> bool {
-	activated := ui_activate(ui.state, id, rect)
-
+ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool, scale: int = 1, pressed: bool = false) {
 	fill := ui.style.button_fill
 	text_color := ui.style.button_text
-	if active {
+	if active || pressed {
 		fill = ui.style.button_active_fill
 		text_color = ui.style.button_active_text
 	}
@@ -484,6 +482,5 @@ ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bo
 	text_px := rect_px(text_rect)
 	text_px.x += 2
 	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
-	return activated
 }
 // END org:block ui-toggle
