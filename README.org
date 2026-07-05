@@ -2,11 +2,58 @@
 
 Small immediate-mode UI package for Odin workbenches.
 
-The design kernel is fixed 8x16 cell geometry: layout is expressed in integer cells, while drawing backends translate those cells to pixels. The initial target is boring, predictable UI for small tools: boxes, labels, buttons, toggles, bars, hitboxes, and debug warnings for text overflow.
+The design kernel is fixed 8x16 cell geometry: layout is expressed in integer
+cells, while drawing backends translate those cells to pixels. The initial
+target is boring, predictable UI for small tools: boxes, labels, buttons,
+toggles, bars, hitboxes, and debug warnings for text overflow.
 
-The canonical implementation source is [[file:8x16.org][8x16.org]]. Generated Odin package files live under [[file:ui8x16][ui8x16]] and should be regenerated from the Org source.
+* Packages
 
-See [[file:SPEC.org][SPEC.org]] for the current v0 contract and [[file:PLAN.org][PLAN.org]] for staged work.
+- [[file:ui8x16][ui8x16]] contains the core immediate-mode UI package.
+- [[file:raylib_8x16][raylib_8x16]] renders primitive draw commands with raylib.
+- [[file:examples][examples]] contains runnable application examples.
+
+The core package has no raylib dependency. Raylib integration lives in the
+backend package, and runnable examples own raylib window setup and the frame
+loop.
+
+* Frame Model
+
+8x16 separates interaction, lowering, and rendering:
+
+#+begin_example
+sample platform input
+  -> ui_begin_frame
+  -> interaction/query phase
+  -> caller updates app state
+  -> lowering phase
+  -> ordered primitive draw commands
+  -> backend render
+#+end_example
+
+UI layout should be discussed in cells:
+
+#+begin_example
+1 UI column = 8 px
+1 UI row    = 16 px
+#+end_example
+
+Pixels are backend output. Rows, columns, and cell rectangles are the tractable
+layout vocabulary.
+
+* Source
+
+The canonical implementation source is [[file:8x16.org][8x16.org]]. Generated Odin
+package files live under [[file:ui8x16][ui8x16]], [[file:raylib_8x16][raylib_8x16]],
+and [[file:examples][examples]].
+
+After editing =8x16.org=, regenerate generated files:
+
+#+begin_src sh
+.ephemera/tangle-org.sh 8x16.org
+#+end_src
+
+See [[file:SPEC.org][SPEC.org]] for the current v0 contract.
 
 * Examples
 
@@ -25,3 +72,20 @@ odin build examples/drawing_app.odin -file -out:/tmp/8x16-drawing-app
 The example uses the bundled =PxPlus_IBM_VGA_8x16.ttf= font from the Oldschool
 PC Font Pack. Font attribution and CC BY-SA 4.0 license text live in
 [[file:assets/fonts/README.md][assets/fonts/README.md]].
+
+* Verification
+
+Run the package checks and tests:
+
+#+begin_src sh
+odin check ui8x16 -no-entry-point -vet-style -vet-tabs
+odin test ui8x16 -vet-style -vet-tabs
+odin check raylib_8x16 -no-entry-point -vet-style -vet-tabs
+odin test raylib_8x16 -vet-style -vet-tabs
+#+end_src
+
+Build the example without launching a window:
+
+#+begin_src sh
+odin build examples/drawing_app.odin -file -out:/tmp/8x16-drawing-app -vet-style -vet-tabs
+#+end_src
