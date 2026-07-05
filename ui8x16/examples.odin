@@ -35,36 +35,36 @@ example_dense_control_panel :: proc(ui: ^UI, material_active, heat_active: bool,
 
 // BEGIN org:block example-drawing-control-rects
 example_drawing_clear_rect :: proc() -> Cell_Rect {
-	return cell_rect(1, 5, 7, 1)
+	return cell_rect(1, 4, 7, 1)
 }
 
 example_drawing_erase_rect :: proc() -> Cell_Rect {
-	return cell_rect(9, 5, 8, 1)
+	return cell_rect(9, 4, 8, 1)
 }
 
 example_drawing_grid_rect :: proc() -> Cell_Rect {
-	return cell_rect(1, 7, 7, 1)
+	return cell_rect(1, 6, 7, 1)
 }
 
 example_drawing_brush_down_rect :: proc() -> Cell_Rect {
-	return cell_rect(9, 7, 3, 1)
+	return cell_rect(9, 6, 3, 1)
 }
 
 example_drawing_brush_up_rect :: proc() -> Cell_Rect {
-	return cell_rect(13, 7, 3, 1)
+	return cell_rect(13, 6, 3, 1)
 }
 // END org:block example-drawing-control-rects
 
 // BEGIN org:block example-drawing-controls
 example_drawing_controls_surface :: proc(ui: ^UI, erase_active, grid_active: bool, brush_size, max_brush_size: int, clear_pressed: bool = false, erase_pressed: bool = false, grid_pressed: bool = false, brush_down_pressed: bool = false, brush_up_pressed: bool = false) {
 	ui_panel(ui, UI_ID(400), cell_rect(0, 0, 18, 16))
-	ui_text(ui, UI_ID(401), cell_rect(1, 1, 16, 2), "draw lab", ui.style.text, scale = 2)
+	ui_text(ui, UI_ID(401), cell_rect(1, 0, 16, 2), "draw lab", ui.style.text, scale = 2)
 	ui_button(ui, UI_ID(402), example_drawing_clear_rect(), "clear", pressed = clear_pressed)
 	ui_toggle(ui, UI_ID(403), example_drawing_erase_rect(), "erase", erase_active, pressed = erase_pressed)
 	ui_toggle(ui, UI_ID(404), example_drawing_grid_rect(), "grid", grid_active, pressed = grid_pressed)
 	ui_button(ui, UI_ID(407), example_drawing_brush_down_rect(), "-", pressed = brush_down_pressed)
 	ui_button(ui, UI_ID(408), example_drawing_brush_up_rect(), "+", pressed = brush_up_pressed)
-	ui_text(ui, UI_ID(406), cell_rect(1, 12, 10, 1), "brush size", ui.style.text)
-	ui_bar(ui, UI_ID(405), cell_rect(1, 14, 16, 1), brush_size, max_brush_size, ui.style.bar_fill)
+	ui_text(ui, UI_ID(406), cell_rect(1, 11, 10, 1), "brush size", ui.style.text)
+	ui_bar(ui, UI_ID(405), cell_rect(1, 13, 16, 1), brush_size, max_brush_size, ui.style.bar_fill)
 }
 // END org:block example-drawing-controls
