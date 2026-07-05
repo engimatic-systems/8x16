@@ -1317,19 +1317,19 @@ test_smoke_commands_emit_primitives :: proc(t: ^testing.T) {
 * Example Workbenches
 
 Examples are small callable surfaces. They pressure-test control ergonomics
-without owning app state.
+without owning app state. Interaction results are caller-owned inputs; examples
+only lower the supplied state into primitive commands.
 
 #+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name examples-package
 package ui8x16
 #+end_src
 
 #+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-toolbar
-example_toolbar_surface :: proc(ui: ^UI, snap_active: bool) -> (run_activated, snap_activated: bool) {
+example_toolbar_surface :: proc(ui: ^UI, snap_active: bool, run_pressed: bool = false, snap_pressed: bool = false) {
 	ui_panel(ui, UI_ID(100), cell_rect(0, 0, 24, 3))
 	ui_text(ui, UI_ID(101), cell_rect(1, 0, 8, 1), "tools", ui.style.text)
-	run_activated = ui_button(ui, UI_ID(102), cell_rect(1, 1, 8, 1), "run")
-	snap_activated = ui_toggle(ui, UI_ID(103), cell_rect(10, 1, 10, 1), "snap", snap_active)
-	return
+	ui_button(ui, UI_ID(102), cell_rect(1, 1, 8, 1), "run", pressed = run_pressed)
+	ui_toggle(ui, UI_ID(103), cell_rect(10, 1, 10, 1), "snap", snap_active, pressed = snap_pressed)
 }
 #+end_src
 
@@ -1341,27 +1341,15 @@ example_status_surface :: proc(ui: ^UI, progress, max_progress: int) {
 }
 #+end_src
 
-#+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-dense-result
-Dense_Control_Result :: struct {
-	run:      bool,
-	material: bool,
-	heat:     bool,
-}
-#+end_src
-
 #+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-dense-panel
-example_dense_control_panel :: proc(ui: ^UI, material_active, heat_active: bool, progress, max_progress: int) -> Dense_Control_Result {
-	result: Dense_Control_Result
-
+example_dense_control_panel :: proc(ui: ^UI, material_active, heat_active: bool, progress, max_progress: int, run_pressed: bool = false, material_pressed: bool = false, heat_pressed: bool = false) {
 	ui_panel(ui, UI_ID(300), cell_rect(0, 0, 32, 8))
 	ui_text(ui, UI_ID(301), cell_rect(1, 0, 18, 1), "control panel", ui.style.text)
-	result.run = ui_button(ui, UI_ID(302), cell_rect(1, 2, 8, 1), "run")
-	result.material = ui_toggle(ui, UI_ID(303), cell_rect(10, 2, 10, 1), "material", material_active)
-	result.heat = ui_toggle(ui, UI_ID(304), cell_rect(21, 2, 8, 1), "heat", heat_active)
+	ui_button(ui, UI_ID(302), cell_rect(1, 2, 8, 1), "run", pressed = run_pressed)
+	ui_toggle(ui, UI_ID(303), cell_rect(10, 2, 10, 1), "material", material_active, pressed = material_pressed)
+	ui_toggle(ui, UI_ID(304), cell_rect(21, 2, 8, 1), "heat", heat_active, pressed = heat_pressed)
 	ui_bar(ui, UI_ID(305), cell_rect(1, 4, 30, 1), progress, max_progress, ui.style.bar_fill)
 	ui_text(ui, UI_ID(306), cell_rect(1, 6, 22, 1), "cells use 8x16 grid", ui.style.text)
-
-	return result
 }
 #+end_src
 
@@ -1371,17 +1359,13 @@ test_example_toolbar_surface_command_snapshot :: proc(t: ^testing.T) {
 	command_storage: [16]Draw_Command
 	warning_storage: [4]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
-	ui_begin_frame(&state, test_mouse_input(0, 0))
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
-	run, snap := example_toolbar_surface(&ui, true)
+	example_toolbar_surface(&ui, true)
 	commands := ui_end(&draw)
 
-	testing.expect(t, !run)
-	testing.expect(t, !snap)
 	testing.expect_value(t, len(commands), 9)
 	expect_fill_rect_kind(t, commands[0])
 	expect_stroke_rect_kind(t, commands[1])
@@ -1397,11 +1381,9 @@ test_example_status_surface_command_snapshot :: proc(t: ^testing.T) {
 	command_storage: [8]Draw_Command
 	warning_storage: [2]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
-	ui_begin_frame(&state, test_mouse_input(0, 0))
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
 	example_status_surface(&ui, 5, 10)
 	commands := ui_end(&draw)
@@ -1419,18 +1401,13 @@ test_example_dense_control_panel_command_snapshot :: proc(t: ^testing.T) {
 	command_storage: [24]Draw_Command
 	warning_storage: [4]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
-	ui_begin_frame(&state, test_mouse_input(0, 0))
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
-	result := example_dense_control_panel(&ui, true, false, 3, 6)
+	example_dense_control_panel(&ui, true, false, 3, 6)
 	commands := ui_end(&draw)
 
-	testing.expect(t, !result.run)
-	testing.expect(t, !result.material)
-	testing.expect(t, !result.heat)
 	testing.expect_value(t, len(commands), 16)
 	expect_text_value(t, commands[2], "control panel")
 	expect_text_value(t, commands[5], "run")
@@ -1443,11 +1420,9 @@ test_example_dense_control_panel_command_snapshot :: proc(t: ^testing.T) {
 
 #+begin_src odin :tangle raylib_8x16/raylib_8x16.odin :noweb no :comments no :name raylib-workbench-smoke
 workbench_smoke_commands :: proc(command_storage: []ui.Draw_Command, warning_storage: []ui.Debug_Warning) -> []ui.Draw_Command {
-	state: ui.UI_State
 	debug := ui.Debug_Buffer{warnings = warning_storage}
 	draw := ui.draw_buffer(command_storage)
-	frame := ui.ui_context(&state, &draw, &debug)
-	ui.ui_begin_frame(&state, ui.Mouse_Input{})
+	frame := ui.ui_context(&draw, &debug)
 
 	ui.example_dense_control_panel(&frame, true, false, 4, 8)
 	return ui.ui_end(&draw)

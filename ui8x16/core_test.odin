@@ -456,17 +456,13 @@ test_example_toolbar_surface_command_snapshot :: proc(t: ^testing.T) {
 	command_storage: [16]Draw_Command
 	warning_storage: [4]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
-	ui_begin_frame(&state, test_mouse_input(0, 0))
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
-	run, snap := example_toolbar_surface(&ui, true)
+	example_toolbar_surface(&ui, true)
 	commands := ui_end(&draw)
 
-	testing.expect(t, !run)
-	testing.expect(t, !snap)
 	testing.expect_value(t, len(commands), 9)
 	expect_fill_rect_kind(t, commands[0])
 	expect_stroke_rect_kind(t, commands[1])
@@ -482,11 +478,9 @@ test_example_status_surface_command_snapshot :: proc(t: ^testing.T) {
 	command_storage: [8]Draw_Command
 	warning_storage: [2]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
-	ui_begin_frame(&state, test_mouse_input(0, 0))
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
 	example_status_surface(&ui, 5, 10)
 	commands := ui_end(&draw)
@@ -504,18 +498,13 @@ test_example_dense_control_panel_command_snapshot :: proc(t: ^testing.T) {
 	command_storage: [24]Draw_Command
 	warning_storage: [4]Debug_Warning
 	ui: UI
-	state: UI_State
 	draw: Draw_Buffer
 	debug: Debug_Buffer
-	test_ui_init(&ui, &state, &draw, &debug, command_storage[:], warning_storage[:])
-	ui_begin_frame(&state, test_mouse_input(0, 0))
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
-	result := example_dense_control_panel(&ui, true, false, 3, 6)
+	example_dense_control_panel(&ui, true, false, 3, 6)
 	commands := ui_end(&draw)
 
-	testing.expect(t, !result.run)
-	testing.expect(t, !result.material)
-	testing.expect(t, !result.heat)
 	testing.expect_value(t, len(commands), 16)
 	expect_text_value(t, commands[2], "control panel")
 	expect_text_value(t, commands[5], "run")

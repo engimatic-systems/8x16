@@ -126,11 +126,9 @@ test_smoke_commands_emit_primitives :: proc(t: ^testing.T) {
 
 // BEGIN org:block raylib-workbench-smoke
 workbench_smoke_commands :: proc(command_storage: []ui.Draw_Command, warning_storage: []ui.Debug_Warning) -> []ui.Draw_Command {
-	state: ui.UI_State
 	debug := ui.Debug_Buffer{warnings = warning_storage}
 	draw := ui.draw_buffer(command_storage)
-	frame := ui.ui_context(&state, &draw, &debug)
-	ui.ui_begin_frame(&state, ui.Mouse_Input{})
+	frame := ui.ui_context(&draw, &debug)
 
 	ui.example_dense_control_panel(&frame, true, false, 4, 8)
 	return ui.ui_end(&draw)
