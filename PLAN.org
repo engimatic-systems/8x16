@@ -63,28 +63,72 @@ Review question: does interaction state stay minimal and caller-owned?
 
 Goal: keep package independent of raylib while still useful to raylib callers.
 
-Deliverables:
-
-- draw command structs for box, text, bar
-- caller-owned command buffer or callback shape
-- minimal =UI_Style=
-- debug overflow warnings
-
-Review question: is the drawing abstraction thin enough to translate directly to raylib?
-
-** PR 5: Controls And Examples
-
-Goal: build the first useful controls and example UIs.
+This PR supersedes the earlier =pr4-drawing-command-layer= and =pr5-controls-and-examples= branches. Treat those branches as implementation reference only, not as base branches.
 
 Deliverables:
 
+- primitive draw command structs only: =Fill_Rect=, =Stroke_Rect=, =Text=
+- =Pixel_Point= for text origin
+- text command uses pixel origin, not =Pixel_Rect=
+- no =Bar= draw command; bars compile to rectangle commands
+- no semantic =Box=, =Button=, =Toggle=, or =Panel= draw commands
+- caller-owned or UI-owned fixed command buffer
+- =ui_end= returns ordered command slice
+- integer text scale =1|2|3|4=
+- loud command-buffer overflow behavior
+
+Review question: does the draw layer expose only primitive rendering facts, with UI semantics resolved before commands reach a backend?
+
+** PR 5: Command Compiler
+
+Goal: turn UI semantics into primitive draw commands.
+
+This PR should be rebuilt on top of the replacement PR 4.
+
+Deliverables:
+
+- =UI= frame object or equivalent call surface containing state, style, and command buffer
 - =ui_text=
 - =ui_box=
 - =ui_panel=
 - =ui_bar=
 - =ui_button=
 - =ui_toggle=
+- style resolution to raw =Color= values
+- text measurement using fixed 8x16 metrics
+- text overflow warning before command emission
+- bars compile to primitive rectangle commands
+- buttons and toggles compile to primitive rectangle/text commands
+- snapshot command-list tests for controls
+
+Review question: is the compiler boundary clear: UI intent enters, primitive ordered draw commands leave?
+
+** PR 6: Raylib Backend
+
+Goal: prove that the command buffer is enough for a concrete renderer without adding raylib to core.
+
+Deliverables:
+
+- separate backend package, likely =raylib_8x16=
+- font loading and backend font handle ownership
+- texture filter setup
+- renderer for =Fill_Rect=, =Stroke_Rect=, and =Text=
+- support text scale =1|2|3|4=
+- backend smoke example
+
+Review question: can raylib render the command buffer without needing UI semantics, style resolution, clipping decisions, or input routing?
+
+** PR 7: Example Workbenches
+
+Goal: pressure-test taste and API ergonomics after the compiler and backend exist.
+
+Deliverables:
+
 - at least two small example surfaces
+- dense control panel example
+- bars, toggles, buttons, text, panels
+- command snapshot tests where stable
+- raylib visual smoke where useful
 
 Review question: do the examples reveal a pleasant API without adding speculative layout helpers?
 

@@ -23,6 +23,12 @@ Pixel_Rect :: struct {
 }
 // END org:block pixel-rect
 
+// BEGIN org:block pixel-point
+Pixel_Point :: struct {
+	x, y: int,
+}
+// END org:block pixel-point
+
 // BEGIN org:block color
 Color :: struct {
 	r, g, b, a: u8,
@@ -155,3 +161,86 @@ contains :: proc(rect: Cell_Rect, x, y: int) -> bool {
 	       y < px.y + px.h
 }
 // END org:block contains
+
+// BEGIN org:block fill-rect-command
+Fill_Rect_Command :: struct {
+	rect:  Pixel_Rect,
+	color: Color,
+}
+// END org:block fill-rect-command
+
+// BEGIN org:block stroke-rect-command
+Stroke_Rect_Command :: struct {
+	rect:  Pixel_Rect,
+	color: Color,
+}
+// END org:block stroke-rect-command
+
+// BEGIN org:block text-command
+Text_Command :: struct {
+	pos:   Pixel_Point,
+	text:  string,
+	color: Color,
+	scale: int,
+}
+// END org:block text-command
+
+// BEGIN org:block draw-command
+Draw_Command :: union {
+	Fill_Rect_Command,
+	Stroke_Rect_Command,
+	Text_Command,
+}
+// END org:block draw-command
+
+// BEGIN org:block draw-buffer
+Draw_Buffer :: struct {
+	commands: []Draw_Command,
+	count:    int,
+}
+// END org:block draw-buffer
+
+// BEGIN org:block draw-buffer-proc
+draw_buffer :: proc(storage: []Draw_Command) -> Draw_Buffer {
+	return Draw_Buffer{commands = storage}
+}
+// END org:block draw-buffer-proc
+
+// BEGIN org:block text-scale-valid
+text_scale_valid :: proc(scale: int) -> bool {
+	return scale >= 1 && scale <= 4
+}
+// END org:block text-scale-valid
+
+// BEGIN org:block draw-push
+draw_push :: proc(buffer: ^Draw_Buffer, command: Draw_Command) {
+	assert(buffer.count < len(buffer.commands), "Draw_Buffer overflow")
+	buffer.commands[buffer.count] = command
+	buffer.count += 1
+}
+// END org:block draw-push
+
+// BEGIN org:block draw-fill-rect
+draw_fill_rect :: proc(buffer: ^Draw_Buffer, rect: Pixel_Rect, color: Color) {
+	draw_push(buffer, Draw_Command(Fill_Rect_Command{rect = rect, color = color}))
+}
+// END org:block draw-fill-rect
+
+// BEGIN org:block draw-stroke-rect
+draw_stroke_rect :: proc(buffer: ^Draw_Buffer, rect: Pixel_Rect, color: Color) {
+	draw_push(buffer, Draw_Command(Stroke_Rect_Command{rect = rect, color = color}))
+}
+// END org:block draw-stroke-rect
+
+// BEGIN org:block draw-text
+draw_text :: proc(buffer: ^Draw_Buffer, pos: Pixel_Point, text: string, color: Color, scale: int) {
+	assert(text_scale_valid(scale), "Text scale must be 1..4")
+	draw_push(buffer, Draw_Command(Text_Command{pos = pos, text = text, color = color, scale = scale}))
+}
+// END org:block draw-text
+
+// BEGIN org:block ui-end
+ui_end :: proc(buffer: ^Draw_Buffer) -> []Draw_Command {
+	return buffer.commands[:buffer.count]
+}
+// END org:block ui-end

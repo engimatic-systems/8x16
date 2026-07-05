@@ -8,6 +8,52 @@ package ui8x16
 import "core:testing"
 // END org:block test-imports
 
+// BEGIN org:block test-command-helpers
+expect_fill_rect :: proc(t: ^testing.T, command: Draw_Command, rect: Pixel_Rect, color: Color) {
+	payload, ok := command.(Fill_Rect_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.rect, rect)
+		testing.expect_value(t, payload.color, color)
+	}
+}
+
+expect_stroke_rect :: proc(t: ^testing.T, command: Draw_Command, rect: Pixel_Rect, color: Color) {
+	payload, ok := command.(Stroke_Rect_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.rect, rect)
+		testing.expect_value(t, payload.color, color)
+	}
+}
+
+expect_text :: proc(t: ^testing.T, command: Draw_Command, pos: Pixel_Point, text: string, color: Color, scale: int) {
+	payload, ok := command.(Text_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.pos, pos)
+		testing.expect_value(t, payload.text, text)
+		testing.expect_value(t, payload.color, color)
+		testing.expect_value(t, payload.scale, scale)
+	}
+}
+
+expect_fill_rect_kind :: proc(t: ^testing.T, command: Draw_Command) {
+	_, ok := command.(Fill_Rect_Command)
+	testing.expect(t, ok)
+}
+
+expect_stroke_rect_kind :: proc(t: ^testing.T, command: Draw_Command) {
+	_, ok := command.(Stroke_Rect_Command)
+	testing.expect(t, ok)
+}
+
+expect_text_kind :: proc(t: ^testing.T, command: Draw_Command) {
+	_, ok := command.(Text_Command)
+	testing.expect(t, ok)
+}
+// END org:block test-command-helpers
+
 // BEGIN org:block test-cell-rect
 @(test)
 test_cell_rect_keeps_absolute_values :: proc(t: ^testing.T) {
@@ -152,3 +198,91 @@ test_ui_begin_frame_clears_press_origin_after_release_frame :: proc(t: ^testing.
 	testing.expect_value(t, state.pressed_id[mouse_button_index(.Left)], UI_ID_NONE)
 }
 // END org:block test-activation-clear-next-frame
+
+// BEGIN org:block test-draw-fill-rect
+@(test)
+test_draw_fill_rect_appends_primitive_command :: proc(t: ^testing.T) {
+	storage: [1]Draw_Command
+	buffer := draw_buffer(storage[:])
+	color := Color{r = 1, g = 2, b = 3, a = 4}
+	rect := Pixel_Rect{x = 8, y = 16, w = 24, h = 32}
+
+	draw_fill_rect(&buffer, rect, color)
+
+	testing.expect_value(t, buffer.count, 1)
+	expect_fill_rect(t, buffer.commands[0], rect, color)
+}
+// END org:block test-draw-fill-rect
+
+// BEGIN org:block test-draw-stroke-rect
+@(test)
+test_draw_stroke_rect_appends_primitive_command :: proc(t: ^testing.T) {
+	storage: [1]Draw_Command
+	buffer := draw_buffer(storage[:])
+	color := Color{r = 5, g = 6, b = 7, a = 8}
+	rect := Pixel_Rect{x = 1, y = 2, w = 3, h = 4}
+
+	draw_stroke_rect(&buffer, rect, color)
+
+	testing.expect_value(t, buffer.count, 1)
+	expect_stroke_rect(t, buffer.commands[0], rect, color)
+}
+// END org:block test-draw-stroke-rect
+
+// BEGIN org:block test-draw-text
+@(test)
+test_draw_text_uses_pixel_origin_and_scale :: proc(t: ^testing.T) {
+	storage: [1]Draw_Command
+	buffer := draw_buffer(storage[:])
+	color := Color{r = 9, g = 10, b = 11, a = 12}
+	pos := Pixel_Point{x = 16, y = 32}
+
+	draw_text(&buffer, pos, "ok", color, 2)
+
+	testing.expect_value(t, buffer.count, 1)
+	expect_text(t, buffer.commands[0], pos, "ok", color, 2)
+}
+// END org:block test-draw-text
+
+// BEGIN org:block test-draw-order
+@(test)
+test_draw_commands_keep_append_order :: proc(t: ^testing.T) {
+	storage: [3]Draw_Command
+	buffer := draw_buffer(storage[:])
+	color := Color{a = 255}
+
+	draw_fill_rect(&buffer, Pixel_Rect{x = 0, y = 0, w = 8, h = 16}, color)
+	draw_stroke_rect(&buffer, Pixel_Rect{x = 1, y = 1, w = 6, h = 14}, color)
+	draw_text(&buffer, Pixel_Point{x = 2, y = 3}, "x", color, 1)
+
+	commands := ui_end(&buffer)
+	testing.expect_value(t, len(commands), 3)
+	expect_fill_rect_kind(t, commands[0])
+	expect_stroke_rect_kind(t, commands[1])
+	expect_text_kind(t, commands[2])
+}
+// END org:block test-draw-order
+
+// BEGIN org:block test-draw-overflow
+@(test)
+test_draw_buffer_overflow_fails_loudly :: proc(t: ^testing.T) {
+	storage: [1]Draw_Command
+	buffer := draw_buffer(storage[:])
+	color := Color{a = 255}
+
+	draw_fill_rect(&buffer, Pixel_Rect{x = 0, y = 0, w = 1, h = 1}, color)
+	testing.expect_assert(t, "Draw_Buffer overflow")
+	draw_fill_rect(&buffer, Pixel_Rect{x = 1, y = 0, w = 1, h = 1}, color)
+}
+// END org:block test-draw-overflow
+
+// BEGIN org:block test-text-scale
+@(test)
+test_draw_text_rejects_invalid_scale :: proc(t: ^testing.T) {
+	storage: [1]Draw_Command
+	buffer := draw_buffer(storage[:])
+
+	testing.expect_assert(t, "Text scale must be 1..4")
+	draw_text(&buffer, Pixel_Point{}, "x", Color{a = 255}, 0)
+}
+// END org:block test-text-scale
