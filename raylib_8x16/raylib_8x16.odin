@@ -16,7 +16,6 @@ Renderer :: struct {
 	font:       rl.Font,
 	text_runes: []rune,
 	spacing:    f32,
-	owns_font:  bool,
 }
 // END org:block raylib-renderer
 
@@ -44,22 +43,14 @@ raylib_point :: proc(point: ui.Pixel_Point) -> rl.Vector2 {
 // END org:block raylib-point
 
 // BEGIN org:block raylib-renderer-procs
-renderer_from_font :: proc(font: rl.Font, text_runes: []rune, spacing: f32 = 0) -> Renderer {
+load_renderer :: proc(font_path: cstring, text_runes: []rune, spacing: f32 = 0) -> Renderer {
+	font := rl.LoadFont(font_path)
 	rl.SetTextureFilter(font.texture, .POINT)
 	return Renderer{font = font, text_runes = text_runes, spacing = spacing}
 }
 
-load_renderer :: proc(font_path: cstring, text_runes: []rune, spacing: f32 = 0) -> Renderer {
-	font := rl.LoadFont(font_path)
-	rl.SetTextureFilter(font.texture, .POINT)
-	return Renderer{font = font, text_runes = text_runes, spacing = spacing, owns_font = true}
-}
-
 unload_renderer :: proc(renderer: ^Renderer) {
-	if renderer.owns_font {
-		rl.UnloadFont(renderer.font)
-		renderer.owns_font = false
-	}
+	rl.UnloadFont(renderer.font)
 }
 // END org:block raylib-renderer-procs
 
