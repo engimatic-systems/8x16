@@ -355,6 +355,15 @@ ui_end :: proc(buffer: ^Draw_Buffer) -> []Draw_Command {
 The compiler layer accepts UI semantics, resolves style to raw colors, performs
 layout/debug checks, and emits primitive draw commands.
 
+In this package, "lowering" means moving down the abstraction ladder: caller
+intent becomes interaction decisions, resolved colors, pixel geometry, debug
+warnings, and finally ordered primitive commands. The backend should only see
+the final primitive command stream.
+
+=UI_Style= is the style-resolution input. Semantic controls choose from these
+colors before emission so the backend never needs to know about button, panel,
+toggle, or bar states.
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-style
 UI_Style :: struct {
 	text: Color,
@@ -388,6 +397,10 @@ default_style :: proc() -> UI_Style {
 	}
 }
 #+end_src
+
+=Debug_Buffer= collects compiler/debug warnings. These checks happen before
+primitive emission because primitive commands intentionally carry no semantic
+layout policy, such as text bounds.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-warning-kind
 Debug_Warning_Kind :: enum {
@@ -432,6 +445,9 @@ debug_push :: proc(buffer: ^Debug_Buffer, warning: Debug_Warning) -> bool {
 }
 #+end_src
 
+=debug_text_overflow= de-duplicates by =UI_ID= within a frame. Repeated calls
+for the same semantic element should not flood the warning buffer.
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name debug-text-overflow
 debug_text_overflow :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect, text: string, measured_width, available_width: int) -> bool {
 	if buffer == nil {
@@ -455,6 +471,10 @@ debug_text_overflow :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect, t
 	})
 }
 #+end_src
+
+=UI= is the per-frame compiler context. It groups interaction state, output
+command storage, optional debug storage, resolved style, and text scale so
+semantic calls do not need to thread those arguments independently.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-context
 UI :: struct {
@@ -487,6 +507,9 @@ ui_context_with_scale :: proc(state: ^UI_State, draw: ^Draw_Buffer, debug: ^Debu
 }
 #+end_src
 
+These helpers are the layout-lowering layer. They convert semantic values into
+bounded integers and pixel-space positions before primitive emission.
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name int-clamp
 int_clamp :: proc(value, low, high: int) -> int {
 	if value < low {
@@ -513,6 +536,10 @@ pixel_origin :: proc(rect: Cell_Rect) -> Pixel_Point {
 }
 #+end_src
 
+=compile_text= is the text-specific lowering point. It measures the text against
+the semantic rectangle, records overflow in the debug path, then emits a
+primitive =Text_Command= with only origin, bytes, color, and scale.
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name compile-text
 compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text: string, color: Color) {
 	measured_width := text_width_px(text, ui.text_scale)
@@ -525,12 +552,18 @@ compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text
 }
 #+end_src
 
+=ui_text= is the smallest semantic surface: it records hit occupancy, lowers
+the rectangle origin to pixels, performs text debug checks, and emits text.
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-text
 ui_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, text: string, color: Color) {
 	ui_hit(ui.state, rect)
 	compile_text(ui, id, rect, pixel_origin(rect), text, color)
 }
 #+end_src
+
+=ui_box= and =ui_panel= lower framed regions into fill/stroke rectangles.
+=ui_panel= is style-specific; =ui_box= accepts raw colors.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-box
 ui_box :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, fill, line: Color) {
@@ -547,6 +580,10 @@ ui_panel :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect) {
 }
 #+end_src
 
+=ui_bar= lowers a scalar value into three primitives: empty fill, value fill,
+and outline. Value clamping belongs here because the backend should not know the
+bar's maximum or semantic range.
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-bar
 ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill: Color) {
 	ui_hit(ui.state, rect)
@@ -562,6 +599,10 @@ ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill:
 	draw_stroke_rect(ui.draw, px, ui.style.line)
 }
 #+end_src
+
+=ui_button= combines interaction, style resolution, layout lowering, and
+primitive emission. Activation comes from =ui_activate=; the pressed visual state
+selects colors; the label is inset by 2 pixels before text compilation.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-button
 ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string) -> bool {
@@ -584,6 +625,9 @@ ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string) -> bool {
 	return activated
 }
 #+end_src
+
+=ui_toggle= shares the button shape but takes active state from the caller. It
+returns activation so the caller can decide whether and how to flip that state.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-toggle
 ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool) -> bool {
