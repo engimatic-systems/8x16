@@ -525,15 +525,17 @@ test_example_drawing_controls_command_snapshot :: proc(t: ^testing.T) {
 	debug: Debug_Buffer
 	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
 
-	example_drawing_controls_surface(&ui, true, false, 4, 8)
+	example_drawing_controls_surface(&ui, true, false, 3, 8)
 	commands := ui_end(&draw)
 
-	testing.expect_value(t, len(commands), 16)
+	testing.expect_value(t, len(commands), 22)
 	expect_text_value(t, commands[2], "draw lab")
 	expect_text_value(t, commands[5], "clear")
 	expect_text_value(t, commands[8], "erase")
 	expect_text_value(t, commands[11], "grid")
-	expect_fill_rect_width(t, commands[13], 104)
-	expect_text_value(t, commands[15], "drag canvas")
+	expect_text_value(t, commands[14], "-")
+	expect_text_value(t, commands[17], "+")
+	expect_text_value(t, commands[18], "brush size")
+	expect_fill_rect_width(t, commands[20], 96)
 }
 // END org:block test-example-drawing-controls
