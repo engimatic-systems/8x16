@@ -57,7 +57,7 @@ example_drawing_brush_up_rect :: proc() -> Cell_Rect {
 
 // BEGIN org:block example-drawing-controls
 example_drawing_controls_surface :: proc(ui: ^UI, erase_active, grid_active: bool, brush_size, max_brush_size: int, clear_pressed: bool = false, erase_pressed: bool = false, grid_pressed: bool = false, brush_down_pressed: bool = false, brush_up_pressed: bool = false) {
-	ui_panel(ui, UI_ID(400), cell_rect(0, 0, 18, 20))
+	ui_panel(ui, UI_ID(400), cell_rect(0, 0, 18, 16))
 	ui_text(ui, UI_ID(401), cell_rect(1, 1, 16, 2), "draw lab", ui.style.text, scale = 2)
 	ui_button(ui, UI_ID(402), example_drawing_clear_rect(), "clear", pressed = clear_pressed)
 	ui_toggle(ui, UI_ID(403), example_drawing_erase_rect(), "erase", erase_active, pressed = erase_pressed)

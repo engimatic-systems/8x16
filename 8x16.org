@@ -1362,7 +1362,7 @@ example_drawing_brush_up_rect :: proc() -> Cell_Rect {
 
 #+begin_src odin :tangle ui8x16/examples.odin :noweb no :comments no :name example-drawing-controls
 example_drawing_controls_surface :: proc(ui: ^UI, erase_active, grid_active: bool, brush_size, max_brush_size: int, clear_pressed: bool = false, erase_pressed: bool = false, grid_pressed: bool = false, brush_down_pressed: bool = false, brush_up_pressed: bool = false) {
-	ui_panel(ui, UI_ID(400), cell_rect(0, 0, 18, 20))
+	ui_panel(ui, UI_ID(400), cell_rect(0, 0, 18, 16))
 	ui_text(ui, UI_ID(401), cell_rect(1, 1, 16, 2), "draw lab", ui.style.text, scale = 2)
 	ui_button(ui, UI_ID(402), example_drawing_clear_rect(), "clear", pressed = clear_pressed)
 	ui_toggle(ui, UI_ID(403), example_drawing_erase_rect(), "erase", erase_active, pressed = erase_pressed)
@@ -1521,12 +1521,12 @@ import ui "../ui8x16"
 import rui "../raylib_8x16"
 
 WINDOW_WIDTH :: 400
-WINDOW_HEIGHT :: 320
+WINDOW_HEIGHT :: 256
 
 FONT_PATH :: "assets/fonts/PxPlus_IBM_VGA_8x16.ttf"
 
 CANVAS_X :: 176
-CANVAS_Y :: 64
+CANVAS_Y :: 32
 CANVAS_COLS :: 64
 CANVAS_ROWS :: 64
 PIXEL_SIZE :: 3
