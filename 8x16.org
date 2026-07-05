@@ -8,9 +8,6 @@ mapped back to this source.
 
 * Package =ui8x16=
 
-The package boundary is intentionally small in PR 1: public value types only,
-with no drawing backend dependency.
-
 The frame pipeline separates interaction from lowering. Interaction queries
 consume sampled input and update caller-owned application state; lowering turns
 that state into primitive draw commands.
