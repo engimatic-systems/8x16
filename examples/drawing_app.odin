@@ -8,28 +8,33 @@ import rl "vendor:raylib"
 import ui "../ui8x16"
 import rui "../raylib_8x16"
 
-WINDOW_WIDTH :: 840
-WINDOW_HEIGHT :: 360
+WINDOW_WIDTH :: 400
+WINDOW_HEIGHT :: 320
 
 FONT_PATH :: "assets/fonts/PxPlus_IBM_VGA_8x16.ttf"
 
-CANVAS_X :: 288
-CANVAS_Y :: 24
+CANVAS_X :: 24
+CANVAS_Y :: 104
 CANVAS_COLS :: 64
-CANVAS_ROWS :: 32
-PIXEL_SIZE :: 8
+CANVAS_ROWS :: 64
+PIXEL_SIZE :: 3
+
+MAX_BRUSH_SIZE :: 8
 
 ID_CLEAR :: ui.UI_ID(402)
 ID_ERASE :: ui.UI_ID(403)
 ID_GRID  :: ui.UI_ID(404)
+ID_BRUSH_DOWN :: ui.UI_ID(407)
+ID_BRUSH_UP   :: ui.UI_ID(408)
 
 Canvas :: struct {
 	cells: [CANVAS_COLS * CANVAS_ROWS]bool,
 }
 
 App_State :: struct {
-	erase:     bool,
-	show_grid: bool,
+	erase:      bool,
+	show_grid:  bool,
+	brush_size: int,
 }
 
 raylib_mouse_input :: proc() -> ui.Mouse_Input {
@@ -54,17 +59,7 @@ clear_canvas :: proc(canvas: ^Canvas) {
 	}
 }
 
-filled_count :: proc(canvas: ^Canvas) -> int {
-	count := 0
-	for cell in canvas.cells {
-		if cell {
-			count += 1
-		}
-	}
-	return count
-}
-
-paint_canvas_at_mouse :: proc(canvas: ^Canvas, erase: bool) -> bool {
+paint_canvas_at_mouse :: proc(canvas: ^Canvas, erase: bool, brush_size: int) -> bool {
 	if !rl.IsMouseButtonDown(.LEFT) {
 		return false
 	}
@@ -81,10 +76,24 @@ paint_canvas_at_mouse :: proc(canvas: ^Canvas, erase: bool) -> bool {
 		return false
 	}
 
-	index := canvas_index(col, row)
 	next := !erase
-	changed := canvas.cells[index] != next
-	canvas.cells[index] = next
+	changed := false
+	radius := brush_size / 2
+	for brush_row in 0..<brush_size {
+		for brush_col in 0..<brush_size {
+			paint_col := col + brush_col - radius
+			paint_row := row + brush_row - radius
+			if paint_col < 0 || paint_col >= CANVAS_COLS || paint_row < 0 || paint_row >= CANVAS_ROWS {
+				continue
+			}
+
+			index := canvas_index(paint_col, paint_row)
+			if canvas.cells[index] != next {
+				changed = true
+			}
+			canvas.cells[index] = next
+		}
+	}
 	return changed
 }
 
@@ -131,6 +140,12 @@ handle_controls :: proc(interaction: ^ui.UI_State, app: ^App_State, canvas: ^Can
 	if ui.ui_activate(interaction, ID_GRID, ui.example_drawing_grid_rect()) {
 		app.show_grid = !app.show_grid
 	}
+	if ui.ui_activate(interaction, ID_BRUSH_DOWN, ui.example_drawing_brush_down_rect()) {
+		app.brush_size = ui.int_clamp(app.brush_size - 1, 1, MAX_BRUSH_SIZE)
+	}
+	if ui.ui_activate(interaction, ID_BRUSH_UP, ui.example_drawing_brush_up_rect()) {
+		app.brush_size = ui.int_clamp(app.brush_size + 1, 1, MAX_BRUSH_SIZE)
+	}
 }
 
 build_ui_commands :: proc(interaction: ^ui.UI_State, app: ^App_State, canvas: ^Canvas, command_storage: []ui.Draw_Command, warning_storage: []ui.Debug_Warning) -> []ui.Draw_Command {
@@ -142,11 +157,13 @@ build_ui_commands :: proc(interaction: ^ui.UI_State, app: ^App_State, canvas: ^C
 		&frame,
 		app.erase,
 		app.show_grid,
-		filled_count(canvas),
-		CANVAS_COLS * CANVAS_ROWS,
+		app.brush_size,
+		MAX_BRUSH_SIZE,
 		clear_pressed = ui.ui_pressed(interaction, ID_CLEAR),
 		erase_pressed = ui.ui_pressed(interaction, ID_ERASE),
 		grid_pressed = ui.ui_pressed(interaction, ID_GRID),
+		brush_down_pressed = ui.ui_pressed(interaction, ID_BRUSH_DOWN),
+		brush_up_pressed = ui.ui_pressed(interaction, ID_BRUSH_UP),
 	)
 
 	return ui.ui_end(&draw)
@@ -162,7 +179,7 @@ main :: proc() {
 	defer rui.unload_renderer(&renderer)
 
 	interaction: ui.UI_State
-	app := App_State{show_grid = true}
+	app := App_State{show_grid = true, brush_size = 2}
 	canvas: Canvas
 	command_storage: [64]ui.Draw_Command
 	warning_storage: [16]ui.Debug_Warning
@@ -171,7 +188,7 @@ main :: proc() {
 		ui.ui_begin_frame(&interaction, raylib_mouse_input())
 		handle_controls(&interaction, &app, &canvas)
 		if !interaction.hit_any {
-			paint_canvas_at_mouse(&canvas, app.erase)
+			paint_canvas_at_mouse(&canvas, app.erase, app.brush_size)
 		}
 
 		commands := build_ui_commands(&interaction, &app, &canvas, command_storage[:], warning_storage[:])
