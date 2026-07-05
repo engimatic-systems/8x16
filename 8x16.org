@@ -29,6 +29,20 @@ mapped back to this source.
 The package boundary is intentionally small in PR 1: public value types only,
 with no drawing backend dependency.
 
+The frame pipeline separates interaction from lowering. Interaction queries
+consume sampled input and update caller-owned application state; lowering turns
+that state into primitive draw commands.
+
+#+begin_example
+sample platform input
+  -> ui_begin_frame
+  -> interaction/query phase
+  -> caller updates app state
+  -> lowering phase
+  -> ordered primitive draw commands
+  -> backend render
+#+end_example
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name package
 package ui8x16
 #+end_src
@@ -392,18 +406,6 @@ intent becomes resolved colors, pixel geometry, debug warnings, and finally
 ordered primitive commands. Interaction decisions happen immediately before this
 lowering step, not inside it. The backend should only see the final primitive
 command stream.
-
-The full frame pipeline is:
-
-#+begin_example
-sample platform input
-  -> ui_begin_frame
-  -> interaction/query phase
-  -> caller updates app state
-  -> lowering phase
-  -> ordered primitive draw commands
-  -> backend render
-#+end_example
 
 =UI_Style= is the style-resolution input. Semantic controls choose from these
 colors before emission so the backend never needs to know about button, panel,
