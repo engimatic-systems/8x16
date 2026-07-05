@@ -232,8 +232,13 @@ contains :: proc(rect: Cell_Rect, x, y: int) -> bool {
 
 ** Primitive Draw Commands
 
-The draw buffer contains backend-ready primitive commands only. Semantic UI
-concepts compile to these commands before a renderer sees them.
+The draw buffer is the handoff point between UI compilation and rendering. It
+contains backend-ready primitive commands only: filled rectangles, stroked
+rectangles, and text draws. Semantic UI concepts compile to these commands
+before a renderer sees them.
+
+Each primitive has its own payload type. This increases the public type surface,
+but it names the renderable data directly and keeps each payload narrow.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name fill-rect-command
 Fill_Rect_Command :: struct {
@@ -249,6 +254,11 @@ Stroke_Rect_Command :: struct {
 }
 #+end_src
 
+=Text_Command= carries a pixel origin rather than a rectangle. Text bounds and
+overflow checks belong to layout/debug code before command emission; the backend
+receives only the position, bytes, resolved color, and integer scale needed to
+draw.
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name text-command
 Text_Command :: struct {
 	pos:   Pixel_Point,
@@ -258,6 +268,11 @@ Text_Command :: struct {
 }
 #+end_src
 
+=Draw_Command= is an Odin union over the primitive payloads. The tradeoff is
+intentional: command storage may be larger and callers see more public types,
+but the active-payload invariant is managed by Odin's type system instead of a
+manual =kind= field plus inactive struct fields.
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-command
 Draw_Command :: union {
 	Fill_Rect_Command,
@@ -265,6 +280,9 @@ Draw_Command :: union {
 	Text_Command,
 }
 #+end_src
+
+The buffer uses caller-owned storage. Commands are append-only and render in
+buffer order; there is no z coordinate or hidden sorting step.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-buffer
 Draw_Buffer :: struct {
@@ -279,11 +297,18 @@ draw_buffer :: proc(storage: []Draw_Command) -> Draw_Buffer {
 }
 #+end_src
 
+=text_scale_valid= constrains the fixed 8x16 design kernel to integer scales
+=1|2|3|4=. Backends may choose how to realize those scales, but commands should
+not carry arbitrary floating-point text sizes.
+
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name text-scale-valid
 text_scale_valid :: proc(scale: int) -> bool {
 	return scale >= 1 && scale <= 4
 }
 #+end_src
+
+=draw_push= is the only raw append path. Overflow asserts loudly because silent
+command loss would make UI failures hard to diagnose.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-push
 draw_push :: proc(buffer: ^Draw_Buffer, command: Draw_Command) {
@@ -292,6 +317,10 @@ draw_push :: proc(buffer: ^Draw_Buffer, command: Draw_Command) {
 	buffer.count += 1
 }
 #+end_src
+
+The =draw_*= procedures are typed constructors for command emission. They build
+the correct union variant, append it, and keep call sites from spelling out the
+union conversion directly.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name draw-fill-rect
 draw_fill_rect :: proc(buffer: ^Draw_Buffer, rect: Pixel_Rect, color: Color) {
@@ -311,6 +340,9 @@ draw_text :: proc(buffer: ^Draw_Buffer, pos: Pixel_Point, text: string, color: C
 	draw_push(buffer, Draw_Command(Text_Command{pos = pos, text = text, color = color, scale = scale}))
 }
 #+end_src
+
+=ui_end= returns the ordered command slice for a renderer or test snapshot. It
+does not clear storage; caller-owned frame lifetime remains explicit.
 
 #+begin_src odin :tangle ui8x16/core.odin :noweb no :comments no :name ui-end
 ui_end :: proc(buffer: ^Draw_Buffer) -> []Draw_Command {
