@@ -82,6 +82,7 @@ odin check ui8x16 -no-entry-point -vet-style -vet-tabs
 odin test ui8x16 -vet-style -vet-tabs
 odin check raylib_8x16 -no-entry-point -vet-style -vet-tabs
 odin test raylib_8x16 -vet-style -vet-tabs
+odin test examples/surfaces -vet-style -vet-tabs
 #+end_src
 
 Build the example without launching a window:

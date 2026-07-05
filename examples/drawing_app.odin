@@ -5,6 +5,7 @@ package main
 
 import "core:c"
 import rl "vendor:raylib"
+import surf "./surfaces"
 import ui "../ui8x16"
 import rui "../raylib_8x16"
 
@@ -131,19 +132,19 @@ draw_canvas :: proc(canvas: ^Canvas, show_grid: bool) {
 }
 
 handle_controls :: proc(interaction: ^ui.UI_State, app: ^App_State, canvas: ^Canvas) {
-	if ui.ui_activate(interaction, ID_CLEAR, ui.example_drawing_clear_rect()) {
+	if ui.ui_activate(interaction, ID_CLEAR, surf.example_drawing_clear_rect()) {
 		clear_canvas(canvas)
 	}
-	if ui.ui_activate(interaction, ID_ERASE, ui.example_drawing_erase_rect()) {
+	if ui.ui_activate(interaction, ID_ERASE, surf.example_drawing_erase_rect()) {
 		app.erase = !app.erase
 	}
-	if ui.ui_activate(interaction, ID_GRID, ui.example_drawing_grid_rect()) {
+	if ui.ui_activate(interaction, ID_GRID, surf.example_drawing_grid_rect()) {
 		app.show_grid = !app.show_grid
 	}
-	if ui.ui_activate(interaction, ID_BRUSH_DOWN, ui.example_drawing_brush_down_rect()) {
+	if ui.ui_activate(interaction, ID_BRUSH_DOWN, surf.example_drawing_brush_down_rect()) {
 		app.brush_size = ui.int_clamp(app.brush_size - 1, 1, MAX_BRUSH_SIZE)
 	}
-	if ui.ui_activate(interaction, ID_BRUSH_UP, ui.example_drawing_brush_up_rect()) {
+	if ui.ui_activate(interaction, ID_BRUSH_UP, surf.example_drawing_brush_up_rect()) {
 		app.brush_size = ui.int_clamp(app.brush_size + 1, 1, MAX_BRUSH_SIZE)
 	}
 }
@@ -153,7 +154,7 @@ build_ui_commands :: proc(interaction: ^ui.UI_State, app: ^App_State, canvas: ^C
 	draw := ui.draw_buffer(command_storage)
 	frame := ui.ui_context(&draw, &debug)
 
-	ui.example_drawing_controls_surface(
+	surf.example_drawing_controls_surface(
 		&frame,
 		app.erase,
 		app.show_grid,
