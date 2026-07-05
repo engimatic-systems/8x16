@@ -63,10 +63,17 @@ Run the stateful raylib drawing example from the repository root:
 odin run examples/drawing_app.odin -file
 #+end_src
 
-Build it without launching a window:
+Run the static control layout-options example:
+
+#+begin_src sh
+odin run examples/layout_options_app.odin -file
+#+end_src
+
+Build examples without launching a window:
 
 #+begin_src sh
 odin build examples/drawing_app.odin -file -out:/tmp/8x16-drawing-app
+odin build examples/layout_options_app.odin -file -out:/tmp/8x16-layout-options-app
 #+end_src
 
 The example uses the bundled =PxPlus_IBM_VGA_8x16.ttf= font from the Oldschool
@@ -89,4 +96,5 @@ Build the example without launching a window:
 
 #+begin_src sh
 odin build examples/drawing_app.odin -file -out:/tmp/8x16-drawing-app -vet-style -vet-tabs
+odin build examples/layout_options_app.odin -file -out:/tmp/8x16-layout-options-app -vet-style -vet-tabs
 #+end_src

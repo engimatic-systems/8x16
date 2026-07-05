@@ -33,6 +33,14 @@ expect_text_value :: proc(t: ^testing.T, command: ui.Draw_Command, text: string)
 	}
 }
 
+expect_text_pos :: proc(t: ^testing.T, command: ui.Draw_Command, pos: ui.Pixel_Point) {
+	payload, ok := command.(ui.Text_Command)
+	testing.expect(t, ok)
+	if ok {
+		testing.expect_value(t, payload.pos, pos)
+	}
+}
+
 expect_fill_rect_width :: proc(t: ^testing.T, command: ui.Draw_Command, width: int) {
 	payload, ok := command.(ui.Fill_Rect_Command)
 	testing.expect(t, ok)
@@ -89,6 +97,31 @@ test_example_status_surface_command_snapshot :: proc(t: ^testing.T) {
 	expect_fill_rect_width(t, commands[4], 120)
 }
 // END org:block test-example-status
+
+// BEGIN org:block test-example-layout-options
+@(test)
+test_example_layout_options_surface_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [16]ui.Draw_Command
+	warning_storage: [4]ui.Debug_Warning
+	frame: ui.UI
+	draw: ui.Draw_Buffer
+	debug: ui.Debug_Buffer
+	example_test_ui(&frame, &draw, &debug, command_storage[:], warning_storage[:])
+
+	example_layout_options_surface(&frame)
+	commands := ui.ui_end(&draw)
+
+	testing.expect_value(t, len(commands), 12)
+	expect_text_value(t, commands[2], "layout options")
+	expect_text_value(t, commands[5], "default")
+	expect_text_pos(t, commands[5], ui.Pixel_Point{x = 10, y = 32})
+	expect_text_value(t, commands[8], "one/half")
+	expect_text_pos(t, commands[8], ui.Pixel_Point{x = 16, y = 72})
+	expect_text_value(t, commands[11], "padded")
+	expect_text_pos(t, commands[11], ui.Pixel_Point{x = 104, y = 72})
+	testing.expect_value(t, debug.count, 0)
+}
+// END org:block test-example-layout-options
 
 // BEGIN org:block test-example-dense-panel
 @(test)

@@ -289,6 +289,7 @@ default_style :: proc() -> UI_Style {
 // BEGIN org:block debug-warning-kind
 Debug_Warning_Kind :: enum {
 	Text_Overflow,
+	Control_Label_Padding_Too_Short,
 }
 // END org:block debug-warning-kind
 
@@ -353,6 +354,27 @@ debug_text_overflow :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect, t
 }
 // END org:block debug-text-overflow
 
+// BEGIN org:block debug-control-label-padding-too-short
+debug_control_label_padding_too_short :: proc(buffer: ^Debug_Buffer, id: UI_ID, rect: Cell_Rect) -> bool {
+	if buffer == nil {
+		return false
+	}
+
+	for i in 0..<buffer.count {
+		warning := buffer.warnings[i]
+		if warning.kind == .Control_Label_Padding_Too_Short && warning.id == id {
+			return false
+		}
+	}
+
+	return debug_push(buffer, Debug_Warning{
+		kind = .Control_Label_Padding_Too_Short,
+		id = id,
+		rect = rect,
+	})
+}
+// END org:block debug-control-label-padding-too-short
+
 // BEGIN org:block ui-context
 UI :: struct {
 	draw:  ^Draw_Buffer,
@@ -360,6 +382,32 @@ UI :: struct {
 	style: UI_Style,
 }
 // END org:block ui-context
+
+// BEGIN org:block control-options
+Control_Label_Padding :: enum {
+	None,
+	One_Half,
+}
+
+Control_Options :: struct {
+	scale:         int,
+	label_padding: Control_Label_Padding,
+}
+
+DEFAULT_CONTROL_OPTIONS :: Control_Options{
+	scale = 1,
+	label_padding = .None,
+}
+// END org:block control-options
+
+// BEGIN org:block control-options-scale
+control_options_scale :: proc(options: Control_Options) -> int {
+	if options.scale == 0 {
+		return DEFAULT_CONTROL_OPTIONS.scale
+	}
+	return options.scale
+}
+// END org:block control-options-scale
 
 // BEGIN org:block ui-context-proc
 ui_context :: proc {
@@ -405,7 +453,11 @@ pixel_origin :: proc(rect: Cell_Rect) -> Pixel_Point {
 // BEGIN org:block compile-text
 compile_text :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, pos: Pixel_Point, text: string, color: Color, scale: int) {
 	measured_width := text_width_px(text, scale)
-	available_width := rect.w * CELL_WIDTH
+	bounds := rect_px(rect)
+	available_width := bounds.x + bounds.w - pos.x
+	if available_width < 0 {
+		available_width = 0
+	}
 	if measured_width > available_width {
 		debug_text_overflow(ui.debug, id, rect, text, measured_width, available_width)
 	}
@@ -451,8 +503,29 @@ ui_bar :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, value, max_value: int, fill:
 }
 // END org:block ui-bar
 
+// BEGIN org:block control-label-origin
+control_label_origin :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, options: Control_Options) -> Pixel_Point {
+	px := rect_px(rect)
+	scale := control_options_scale(options)
+
+	switch options.label_padding {
+	case .One_Half:
+		px.x += CELL_WIDTH * scale
+		required_height := CELL_HEIGHT * scale * 2
+		if px.h < required_height {
+			debug_control_label_padding_too_short(ui.debug, id, rect)
+			return Pixel_Point{x = px.x, y = px.y}
+		}
+		return Pixel_Point{x = px.x, y = px.y + CELL_HEIGHT * scale / 2}
+	case .None:
+		return Pixel_Point{x = px.x + 2, y = px.y}
+	}
+	return Pixel_Point{x = px.x + 2, y = px.y}
+}
+// END org:block control-label-origin
+
 // BEGIN org:block ui-button
-ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, scale: int = 1, pressed: bool = false) {
+ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, options: Control_Options = DEFAULT_CONTROL_OPTIONS, pressed: bool = false) {
 	fill := ui.style.button_fill
 	text_color := ui.style.button_text
 	if pressed {
@@ -461,15 +534,12 @@ ui_button :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, scale: int
 	}
 
 	ui_box(ui, id, rect, fill, ui.style.line)
-	text_rect := rect
-	text_px := rect_px(text_rect)
-	text_px.x += 2
-	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
+	compile_text(ui, id, rect, control_label_origin(ui, id, rect, options), label, text_color, control_options_scale(options))
 }
 // END org:block ui-button
 
 // BEGIN org:block ui-toggle
-ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool, scale: int = 1, pressed: bool = false) {
+ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bool, options: Control_Options = DEFAULT_CONTROL_OPTIONS, pressed: bool = false) {
 	fill := ui.style.button_fill
 	text_color := ui.style.button_text
 	if active || pressed {
@@ -478,9 +548,6 @@ ui_toggle :: proc(ui: ^UI, id: UI_ID, rect: Cell_Rect, label: string, active: bo
 	}
 
 	ui_box(ui, id, rect, fill, ui.style.line)
-	text_rect := rect
-	text_px := rect_px(text_rect)
-	text_px.x += 2
-	compile_text(ui, id, rect, Pixel_Point{x = text_px.x, y = text_px.y}, label, text_color, scale)
+	compile_text(ui, id, rect, control_label_origin(ui, id, rect, options), label, text_color, control_options_scale(options))
 }
 // END org:block ui-toggle
