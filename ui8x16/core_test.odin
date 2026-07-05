@@ -514,3 +514,26 @@ test_example_dense_control_panel_command_snapshot :: proc(t: ^testing.T) {
 	expect_text_value(t, commands[15], "cells use 8x16 grid")
 }
 // END org:block test-example-dense-panel
+
+// BEGIN org:block test-example-drawing-controls
+@(test)
+test_example_drawing_controls_command_snapshot :: proc(t: ^testing.T) {
+	command_storage: [24]Draw_Command
+	warning_storage: [4]Debug_Warning
+	ui: UI
+	draw: Draw_Buffer
+	debug: Debug_Buffer
+	test_ui_init(&ui, &draw, &debug, command_storage[:], warning_storage[:])
+
+	example_drawing_controls_surface(&ui, true, false, 4, 8)
+	commands := ui_end(&draw)
+
+	testing.expect_value(t, len(commands), 16)
+	expect_text_value(t, commands[2], "draw lab")
+	expect_text_value(t, commands[5], "clear")
+	expect_text_value(t, commands[8], "erase")
+	expect_text_value(t, commands[11], "grid")
+	expect_fill_rect_width(t, commands[13], 104)
+	expect_text_value(t, commands[15], "drag canvas")
+}
+// END org:block test-example-drawing-controls

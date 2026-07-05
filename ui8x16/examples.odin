@@ -32,3 +32,29 @@ example_dense_control_panel :: proc(ui: ^UI, material_active, heat_active: bool,
 	ui_text(ui, UI_ID(306), cell_rect(1, 6, 22, 1), "cells use 8x16 grid", ui.style.text)
 }
 // END org:block example-dense-panel
+
+// BEGIN org:block example-drawing-control-rects
+example_drawing_clear_rect :: proc() -> Cell_Rect {
+	return cell_rect(2, 3, 7, 1)
+}
+
+example_drawing_erase_rect :: proc() -> Cell_Rect {
+	return cell_rect(10, 3, 8, 1)
+}
+
+example_drawing_grid_rect :: proc() -> Cell_Rect {
+	return cell_rect(19, 3, 8, 1)
+}
+// END org:block example-drawing-control-rects
+
+// BEGIN org:block example-drawing-controls
+example_drawing_controls_surface :: proc(ui: ^UI, erase_active, grid_active: bool, ink, max_ink: int, clear_pressed: bool = false, erase_pressed: bool = false, grid_pressed: bool = false) {
+	ui_panel(ui, UI_ID(400), cell_rect(1, 1, 30, 10))
+	ui_text(ui, UI_ID(401), cell_rect(2, 1, 10, 1), "draw lab", ui.style.text)
+	ui_button(ui, UI_ID(402), example_drawing_clear_rect(), "clear", pressed = clear_pressed)
+	ui_toggle(ui, UI_ID(403), example_drawing_erase_rect(), "erase", erase_active, pressed = erase_pressed)
+	ui_toggle(ui, UI_ID(404), example_drawing_grid_rect(), "grid", grid_active, pressed = grid_pressed)
+	ui_bar(ui, UI_ID(405), cell_rect(2, 7, 26, 1), ink, max_ink, ui.style.bar_fill)
+	ui_text(ui, UI_ID(406), cell_rect(2, 9, 18, 1), "drag canvas", ui.style.text)
+}
+// END org:block example-drawing-controls
