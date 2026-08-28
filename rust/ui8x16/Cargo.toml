@@ -1,0 +1,17 @@
+[package]
+name = "ui8x16"
+version = "0.1.0"
+edition = "2024"
+description = "Dependency-free immediate-mode UI primitives on a fixed 8x16 cell grid"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = "warn"
+pedantic = "warn"
