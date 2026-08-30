@@ -2,6 +2,8 @@
 
 This crate is a dependency-free Rust-native vertical slice of the repository's
 Odin `ui8x16` package. It does not replace or generate the Odin implementation.
+Its canonical literate source is [`ui8x16.org`](ui8x16.org); edit that file and
+tangle it to regenerate the Rust crate files.
 
 The architecture preserves the same frame split:
 
@@ -45,4 +47,11 @@ Run the verified slice from the repository root:
 ```sh
 cargo test --manifest-path rust/ui8x16/Cargo.toml --all-targets
 cargo run --manifest-path rust/ui8x16/Cargo.toml --example surface
+```
+
+Regenerate the crate from its Org source with standard Org Babel:
+
+```sh
+emacs --batch rust/ui8x16/ui8x16.org \
+  --eval '(org-babel-tangle)'
 ```

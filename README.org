@@ -49,6 +49,10 @@ The canonical implementation source is [[file:8x16.org][8x16.org]]. Generated Od
 package files live under [[file:ui8x16][ui8x16]], [[file:raylib_8x16][raylib_8x16]],
 and [[file:examples][examples]].
 
+The Rust-native slice has its own canonical literate source at
+[[file:rust/ui8x16/ui8x16.org][rust/ui8x16/ui8x16.org]]. It tangles only within
+the Rust crate and does not generate or modify the Odin implementation.
+
 After editing =8x16.org=, regenerate generated files:
 
 #+begin_src sh
