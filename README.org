@@ -12,6 +12,8 @@ toggles, bars, hitboxes, and debug warnings for text overflow.
 - [[file:ui8x16][ui8x16]] contains the core immediate-mode UI package.
 - [[file:raylib_8x16][raylib_8x16]] renders primitive draw commands with raylib.
 - [[file:examples][examples]] contains runnable application examples.
+- [[file:rust/ui8x16][rust/ui8x16]] contains the standalone Rust-native vertical
+  slice. It preserves the Odin package and has its own parity notes and tests.
 
 The core package has no raylib dependency. Raylib integration lives in the
 backend package, and runnable examples own raylib window setup and the frame
@@ -46,6 +48,10 @@ layout vocabulary.
 The canonical implementation source is [[file:8x16.org][8x16.org]]. Generated Odin
 package files live under [[file:ui8x16][ui8x16]], [[file:raylib_8x16][raylib_8x16]],
 and [[file:examples][examples]].
+
+The Rust-native slice has its own canonical literate source at
+[[file:rust/ui8x16/ui8x16.org][rust/ui8x16/ui8x16.org]]. It tangles only within
+the Rust crate and does not generate or modify the Odin implementation.
 
 After editing =8x16.org=, regenerate generated files:
 
@@ -97,4 +103,12 @@ Build the example without launching a window:
 #+begin_src sh
 odin build examples/drawing_app.odin -file -out:/tmp/8x16-drawing-app -vet-style -vet-tabs
 odin build examples/layout_options_app.odin -file -out:/tmp/8x16-layout-options-app -vet-style -vet-tabs
+#+end_src
+
+Verify the Rust-native slice and run its non-windowed command-lowering example:
+
+#+begin_src sh
+cargo test --manifest-path rust/ui8x16/Cargo.toml --all-targets
+cargo clippy --manifest-path rust/ui8x16/Cargo.toml --all-targets -- -D warnings
+cargo run --manifest-path rust/ui8x16/Cargo.toml --example surface
 #+end_src
